@@ -23,9 +23,10 @@ export async function getBudgets(year: number, month: number): Promise<BudgetLin
   // buscar orçamentos do mês
   const { data: budgets } = await supabase
     .from('budgets')
-    .select('id, planned_amount, categories:category_id(name)')
+    .select('id, planned_amount, category_id, categories:category_id(name)')
     .eq('year', year)
     .eq('month', month)
+    .eq('user_id', user.id)
 
   // buscar transações do mês
   const { data: txs } = await supabase
@@ -48,7 +49,7 @@ export async function getBudgets(year: number, month: number): Promise<BudgetLin
   const lines: BudgetLine[] = []
 
   for (const b of budgets ?? []) {
-    const spent = spentByCat.get(b.categories?.id ?? '') ?? 0
+    const spent = spentByCat.get(b.category_id ?? '') ?? 0
     const amount = Number(b.planned_amount) || 0
     lines.push({
       id: b.id,
@@ -79,4 +80,7 @@ export async function getBudgets(year: number, month: number): Promise<BudgetLin
 
   return lines
 }
+
+// Compatibilidade com páginas que importam o nome antigo
+export { getBudgets as getBudgetsWithSpend };
 
