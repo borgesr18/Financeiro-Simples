@@ -7,6 +7,16 @@ import { notFound } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { updateBudget, deleteBudget } from '../../actions'
 
+type Category = { id: string; name: string }
+type Budget = {
+  id: string
+  category_id: string | null
+  category: string | null
+  year: number
+  month: number
+  amount: number
+}
+
 export default async function BudgetEditPage({
   params,
   searchParams,
@@ -15,7 +25,9 @@ export default async function BudgetEditPage({
   searchParams?: { year?: string; month?: string }
 }) {
   const supabase = createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
 
   if (!user) {
     return (
@@ -34,20 +46,23 @@ export default async function BudgetEditPage({
   }
 
   // Carrega a meta garantindo ownership
-  const { data: budget } = await supabase
+  const { data: budgetRaw } = await supabase
     .from('budgets')
     .select('id, category_id, category, year, month, amount')
     .eq('id', params.id)
     .eq('user_id', user.id)
     .single()
 
+  const budget = (budgetRaw ?? null) as Budget | null
   if (!budget) notFound()
 
-  // Carrega categorias para o dropdown
-  const { data: categories = [] } = await supabase
+  // Carrega categorias para o dropdown e garante array tipado
+  const { data: categoriesRaw } = await supabase
     .from('categories')
     .select('id, name')
     .order('name', { ascending: true })
+
+  const categories: Category[] = Array.isArray(categoriesRaw) ? (categoriesRaw as Category[]) : []
 
   const y = Number.isFinite(Number(searchParams?.year)) ? Number(searchParams?.year) : budget.year
   const m = Number.isFinite(Number(searchParams?.month)) ? Number(searchParams?.month) : budget.month
@@ -84,9 +99,13 @@ export default async function BudgetEditPage({
               required
               className="w-full px-3 py-2 border border-neutral-200 rounded-lg bg-neutral-50 focus:outline-none focus:ring-2 focus:ring-primary-300"
             >
-              <option value="" disabled>Selecione…</option>
+              <option value="" disabled>
+                Selecione…
+              </option>
               {categories.map((c) => (
-                <option key={c.id} value={c.id}>{c.name}</option>
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
               ))}
             </select>
             {/* Opcional: mostrar categoria legada em texto, se existir */}
@@ -162,4 +181,3 @@ export default async function BudgetEditPage({
     </main>
   )
 }
-
