@@ -10,14 +10,26 @@ export const dynamic = 'force-dynamic'
 
 type TxType = 'income' | 'expense' | 'all'
 
-type TxRow = {
+// Resposta crua do Supabase (categories pode vir objeto OU array)
+type TxRowRaw = {
   id: string
   date: string
   description: string
   amount: number
   type: 'income' | 'expense'
   category_id?: string | null
-  categories?: { name: string } | null
+  categories?: { name: string } | { name: string }[] | null
+  created_at?: string
+}
+
+// Linha normalizada para render
+type TxRow = {
+  id: string
+  date: string
+  description: string
+  amount: number
+  type: 'income' | 'expense'
+  categoryName: string
   created_at?: string
 }
 
@@ -26,6 +38,12 @@ function monthRange(date = new Date()) {
   const end = new Date(date.getFullYear(), date.getMonth() + 1, 0)
   const iso = (d: Date) => d.toISOString().slice(0, 10)
   return { from: iso(start), to: iso(end) }
+}
+
+function categoryToName(cat: TxRowRaw['categories']): string {
+  if (!cat) return '—'
+  if (Array.isArray(cat)) return cat[0]?.name ?? '—'
+  return cat.name ?? '—'
 }
 
 export default async function TransactionsPage({
@@ -50,13 +68,9 @@ export default async function TransactionsPage({
     return (
       <main className="flex-1 overflow-y-auto p-6 bg-neutral-50">
         <div className="max-w-xl mx-auto bg-white rounded-xl shadow-card p-6">
-          <p className="text-neutral-700 mb-4">Você precisa estar logado para ver seus lançamentos.</p>
-          <Link
-            href={`/login?redirectTo=${encodeURIComponent('/transactions')}`}
-            className="px-4 py-2 bg-primary-500 text-white rounded-lg hover:bg-primary-600"
-          >
-            Ir para login
-          </Link>
+          <p className="text-neutral-700 mb-4">
+            Você precisa estar logado para ver seus lançamentos.
+          </p>
         </div>
       </main>
     )
@@ -65,7 +79,10 @@ export default async function TransactionsPage({
   // Base query com join em categories(name)
   let base = supabase
     .from('transactions')
-    .select('id, date, description, amount, type, category_id, categories(name), created_at', { count: 'exact' })
+    .select(
+      'id, date, description, amount, type, category_id, categories(name), created_at',
+      { count: 'exact' }
+    )
     .eq('user_id', user.id)
     .gte('date', from)
     .lte('date', to)
@@ -83,7 +100,19 @@ export default async function TransactionsPage({
     console.error('[transactions] fetch error:', error)
   }
 
-  const rows: TxRow[] = Array.isArray(data) ? (data as TxRow[]) : []
+  // Normaliza o shape vindo do Supabase
+  const rows: TxRow[] = (Array.isArray(data) ? (data as TxRowRaw[]) : []).map(
+    (t) => ({
+      id: t.id,
+      date: t.date,
+      description: t.description,
+      amount: Number(t.amount),
+      type: t.type,
+      categoryName: categoryToName(t.categories),
+      created_at: t.created_at,
+    })
+  )
+
   const total = count ?? 0
   const pages = Math.max(1, Math.ceil(total / pageSize))
 
@@ -127,21 +156,23 @@ export default async function TransactionsPage({
           </thead>
           <tbody>
             {rows.map((t) => {
-              const amount = Number(t.amount)
-              const isNegative = amount < 0 || t.type === 'expense'
+              const isNegative = t.amount < 0 || t.type === 'expense'
               return (
-                <tr key={t.id} className="border-t border-neutral-100 hover:bg-neutral-50">
+                <tr
+                  key={t.id}
+                  className="border-t border-neutral-100 hover:bg-neutral-50"
+                >
                   <td className="px-4 py-3">
                     {new Date(t.date).toLocaleDateString('pt-BR')}
                   </td>
                   <td className="px-4 py-3">{t.description}</td>
-                  <td className="px-4 py-3">{t.categories?.name ?? '—'}</td>
+                  <td className="px-4 py-3">{t.categoryName}</td>
                   <td
                     className={`px-4 py-3 text-right font-medium ${
                       isNegative ? 'text-danger' : 'text-success'
                     }`}
                   >
-                    {brl(amount)}
+                    {brl(t.amount)}
                   </td>
                   <td className="px-4 py-3 text-right">
                     <TransactionRowActions id={t.id} />
@@ -194,5 +225,3 @@ export default async function TransactionsPage({
     </main>
   )
 }
-
-
