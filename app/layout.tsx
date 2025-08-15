@@ -19,6 +19,7 @@ import {
   FaGear,
   FaFileLines,
 } from 'react-icons/fa6'
+import AuthMenu from '@/components/AuthMenu'
 
 const inter = Inter({ subsets: ['latin'], variable: '--font-inter' })
 
@@ -153,6 +154,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                   <FaPlus className="mr-2" />
                   <span>Novo Lançamento</span>
                 </Link>
+                <AuthMenu />
               </div>
             </header>
 
@@ -163,5 +165,3 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     </html>
   )
 }
-
-
