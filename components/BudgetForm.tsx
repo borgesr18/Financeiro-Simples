@@ -30,14 +30,16 @@ export default function BudgetForm({ initial }: { initial?: BudgetInitial }) {
   const today = useMemo(() => new Date(), [])
   const m0 = Number(qs.get('month')) || (initial?.month ?? today.getMonth() + 1)
   const y0 = Number(qs.get('year')) || (initial?.year ?? today.getFullYear())
+  const cat0 = qs.get('category') ?? initial?.category ?? ''
+  const amt0 = Number(qs.get('amount') ?? initial?.amount ?? 0)
 
   const { register, handleSubmit, formState: { errors, isSubmitting }, reset } = useForm<FormData>({
     resolver: zodResolver(schema),
     defaultValues: {
-      category: initial?.category ?? '',
+      category: cat0,
       month: m0,
       year: y0,
-      amount: initial?.amount ?? 0,
+      amount: amt0,
     }
   })
 
@@ -55,7 +57,6 @@ export default function BudgetForm({ initial }: { initial?: BudgetInitial }) {
       if (uerr || !user) throw new Error('Sessão expirada. Faça login novamente.')
 
       if (initial?.id) {
-        // EDITAR
         const { error } = await supabase
           .from('budgets')
           .update({
@@ -67,7 +68,6 @@ export default function BudgetForm({ initial }: { initial?: BudgetInitial }) {
           .eq('id', initial.id)
         if (error) throw error
       } else {
-        // CRIAR — upsert por (user_id,category,month,year)
         const { error } = await supabase
           .from('budgets')
           .upsert({
@@ -144,3 +144,4 @@ export default function BudgetForm({ initial }: { initial?: BudgetInitial }) {
     </form>
   )
 }
+
