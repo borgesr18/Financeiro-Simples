@@ -68,7 +68,7 @@ export default async function BudgetPage({
 
   let lines: BudgetLine[] = []
   try {
-    // ✅ assinatura correta: (supabase, year, month)
+    // Assinatura correta: (supabase, year, month)
     const tmp = await getBudgetsWithSpend(supabase, y, m)
     lines = (tmp ?? []) as BudgetLine[]
   } catch (e) {
@@ -143,17 +143,26 @@ export default async function BudgetPage({
                       </span>
                     )}
                   </div>
-                  <BudgetBar spent={l.spent} amount={l.amount} />
+
+                  {/* ✅ Passando todas as props que o BudgetBar exige */}
+                  <BudgetBar
+                    category={l.category}
+                    amount={l.amount}
+                    spent={l.spent}
+                    percent={l.percent}
+                    over={l.over}
+                  />
+
                   <div className="text-sm text-neutral-500">
-                    Gasto:{' '}
+                    Gasto{' '}
                     <span className="text-neutral-800">{brl(l.spent)}</span>
                     <span className="mx-1">•</span>
-                    Meta:{' '}
+                    Meta{' '}
                     <span className="text-neutral-800">{brl(l.amount)}</span>
                     {l.amount > 0 && (
                       <>
                         <span className="mx-1">•</span>
-                        Usado:{' '}
+                        Usado{' '}
                         <span className={l.over ? 'text-danger' : 'text-neutral-800'}>
                           {Math.min(999, Math.round(l.percent))}%
                         </span>
@@ -192,3 +201,4 @@ export default async function BudgetPage({
     </main>
   )
 }
+
