@@ -1,10 +1,12 @@
-export type AccountType = 'wallet' | 'checking' | 'savings' | 'credit'
-export type CategoryKind = 'income' | 'expense'
+export type TxType = 'income' | 'expense'
 
-export interface BudgetSummary {
-  category: string
-  planned: number
-  realized: number
-  variance: number
-  progress: number // 0..1+
+export interface Transaction {
+  id: string
+  user_id: string
+  created_at: string
+  date: string
+  description: string
+  amount: number // positivo = income; negativo = expense
+  category: string | null
+  type: TxType
 }
