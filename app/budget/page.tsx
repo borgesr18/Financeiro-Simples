@@ -6,6 +6,7 @@ import BudgetRowActions from '@/components/BudgetRowActions'
 import { brl } from '@/lib/format'
 import Link from 'next/link'
 
+export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
 // Ajuste este tipo para refletir exatamente o que seu helper retorna.
