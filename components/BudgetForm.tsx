@@ -1,95 +1,138 @@
+// components/BudgetForm.tsx
 'use client'
+
+import { useState } from 'react'
+import { useForm } from 'react-hook-form'
 import { z } from 'zod'
 import { zodResolver } from '@hookform/resolvers/zod'
-import { useForm } from 'react-hook-form'
-import { useRouter, useSearchParams } from 'next/navigation'
-import { useMemo, useState } from 'react'
 import { createBrowserClient } from '@supabase/ssr'
 
 const schema = z.object({
-  category: z.string().min(2, 'Informe uma categoria'),
-  month: z.coerce.number().int().min(1).max(12),
-  year: z.coerce.number().int().min(2000),
-  amount: z.coerce.number().min(0, 'Valor deve ser ≥ 0'),
+  category_id: z.string().min(1, 'Selecione a categoria'),
+  year: z.coerce.number().min(2000),
+  month: z.coerce.number().min(1).max(12),
+  amount: z.coerce.number().positive(),
 })
 
 type FormData = z.infer<typeof schema>
 
-export type BudgetInitial = {
-  id?: string
-  category?: string
-  month?: number
-  year?: number
-  amount?: number
-}
-
-export default function BudgetForm({ initial }: { initial?: BudgetInitial }) {
-  const router = useRouter()
-  const qs = useSearchParams()
-
-  const today = useMemo(() => new Date(), [])
-  const m0 = Number(qs.get('month')) || (initial?.month ?? today.getMonth() + 1)
-  const y0 = Number(qs.get('year')) || (initial?.year ?? today.getFullYear())
-
-  const supabase = useMemo(() => createBrowserClient(
+export default function BudgetForm({
+  categories,
+  onSaved,
+}: {
+  categories: { id: string; name: string }[]
+  onSaved?: () => void
+}) {
+  const supabase = createBrowserClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-  ), [])
+  )
 
-  const { register, handleSubmit, formState: { errors, isSubmitting }, reset } = useForm<FormData>({
-    resolver: zodResolver(schema),
-    defaultValues: {
-      category: initial?.category ?? '',
-      month: m0,
-      year: y0,
-      amount: initial?.amount ?? 0,
-    },
-  })
+  const {
+    register,
+    handleSubmit,
+    formState: { errors, isSubmitting },
+    reset,
+  } = useForm<FormData>({ resolver: zodResolver(schema) })
 
-  const [err, setErr] = useState<string | null>(null)
+  const [errorMsg, setErrorMsg] = useState<string | null>(null)
 
   async function onSubmit(data: FormData) {
-    setErr(null)
-    try {
-      const { data: { user }, error: uerr } = await supabase.auth.getUser()
-      if (uerr || !user) throw new Error('Sessão expirada. Faça login novamente.')
-
-      if (initial?.id) {
-        const { error } = await supabase
-          .from('budgets')
-          .update({
-            category: data.category,
-            month: data.month,
-            year: data.year,
-            amount: data.amount,
-          })
-          .eq('id', initial.id)
-          .eq('user_id', user.id)
-        if (error) throw error
-      } else {
-        const { error } = await supabase
-          .from('budgets')
-          .upsert({
-            category: data.category,
-            month: data.month,
-            year: data.year,
-            amount: data.amount,
-            user_id: user.id,
-          })
-        if (error) throw error
-      }
-
-      reset()
-      router.replace(`/budget?year=${data.year}&month=${data.month}`) // <-- corrigido
-      router.refresh()
-    } catch (e: any) {
-      setErr(e?.message ?? 'Erro ao salvar meta')
+    setErrorMsg(null)
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) {
+      setErrorMsg('Sessão expirada, faça login novamente.')
+      return
     }
+
+    const { error } = await supabase.from('budgets').upsert({
+      user_id: user.id,
+      category_id: data.category_id,
+      year: data.year,
+      month: data.month,
+      planned_amount: data.amount,
+    })
+
+    if (error) {
+      setErrorMsg(error.message)
+      return
+    }
+
+    reset()
+    if (onSaved) onSaved()
   }
 
   return (
-    <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-      {/* ... resto inalterado (inputs/erros/botões) ... */}
+    <form onSubmit={handleSubmit(onSubmit)} className="space-y-3">
+      <div>
+        <label className="block text-sm mb-1">Categoria</label>
+        <select
+          {...register('category_id')}
+          className="w-full rounded border px-3 py-2"
+        >
+          <option value="">Selecione...</option>
+          {categories.map(c => (
+            <option key={c.id} value={c.id}>
+              {c.name}
+            </option>
+          ))}
+        </select>
+        {errors.category_id && (
+          <p className="text-sm text-red-600">{errors.category_id.message}</p>
+        )}
+      </div>
+
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <label className="block text-sm mb-1">Ano</label>
+          <input
+            type="number"
+            {...register('year')}
+            className="w-full rounded border px-3 py-2"
+            defaultValue={new Date().getFullYear()}
+          />
+          {errors.year && (
+            <p className="text-sm text-red-600">{errors.year.message}</p>
+          )}
+        </div>
+        <div>
+          <label className="block text-sm mb-1">Mês</label>
+          <input
+            type="number"
+            {...register('month')}
+            className="w-full rounded border px-3 py-2"
+            min={1}
+            max={12}
+            defaultValue={new Date().getMonth() + 1}
+          />
+          {errors.month && (
+            <p className="text-sm text-red-600">{errors.month.message}</p>
+          )}
+        </div>
+      </div>
+
+      <div>
+        <label className="block text-sm mb-1">Valor planejado (R$)</label>
+        <input
+          type="number"
+          step="0.01"
+          {...register('amount')}
+          className="w-full rounded border px-3 py-2"
+        />
+        {errors.amount && (
+          <p className="text-sm text-red-600">{errors.amount.message}</p>
+        )}
+      </div>
+
+      {errorMsg && <p className="text-sm text-red-600">{errorMsg}</p>}
+
+      <button
+        type="submit"
+        disabled={isSubmitting}
+        className="px-4 py-2 bg-primary-500 text-white rounded-lg"
+      >
+        {isSubmitting ? 'Salvando...' : 'Salvar orçamento'}
+      </button>
     </form>
   )
 }
