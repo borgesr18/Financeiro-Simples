@@ -1,5 +1,6 @@
+// lib/supabase/server.ts
 import { cookies } from 'next/headers'
-import { createServerClient, type CookieOptions } from '@supabase/ssr'
+import { createServerClient } from '@supabase/ssr'
 
 export function createClient() {
   const cookieStore = cookies()
@@ -9,18 +10,20 @@ export function createClient() {
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     {
       cookies: {
+        // Somente leitura no render de RSC
         get(name: string) {
           return cookieStore.get(name)?.value
         },
-        set(name: string, value: string, options: CookieOptions) {
-          cookieStore.set({ name, value, ...options })
+        // Bloqueia/ignora sets no render para evitar o erro
+        set() {
+          // NOOP em RSC (Next não permite cookies.set aqui)
         },
-        remove(name: string, options: CookieOptions) {
-          // Em Next 14, "remover" é setar vazio respeitando as opções
-          cookieStore.set({ name, value: '', ...options })
+        remove() {
+          // NOOP em RSC
         },
       },
     }
   )
 }
+
 
