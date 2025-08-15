@@ -5,6 +5,7 @@ import { brl } from '@/lib/format'
 import TransactionsFilters from '@/components/TransactionsFilters'
 import TransactionRowActions from '@/components/TransactionRowActions'
 
+export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
 type TxType = 'income' | 'expense' | 'all'
