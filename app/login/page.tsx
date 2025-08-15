@@ -1,19 +1,21 @@
 'use client'
-import { useState } from 'react'
+import { Suspense, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { z } from 'zod'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useForm } from 'react-hook-form'
 import { createBrowserClient } from '@supabase/ssr'
 
+// força render dinâmico (evita tentar prerender /login)
+export const dynamic = 'force-dynamic'
+
 const schema = z.object({
   email: z.string().email('Informe um e-mail válido'),
   password: z.string().min(6, 'Mínimo de 6 caracteres').optional(),
 })
-
 type FormData = z.infer<typeof schema>
 
-export default function LoginPage() {
+function LoginInner() {
   const router = useRouter()
   const params = useSearchParams()
   const redirectTo = params.get('redirectTo') || '/'
@@ -55,7 +57,6 @@ export default function LoginPage() {
         return
       }
 
-      // magic link
       if (mode === 'magic') {
         const { error } = await supabase.auth.signInWithOtp({
           email: data.email,
@@ -115,9 +116,24 @@ export default function LoginPage() {
         </form>
 
         <p className="text-xs text-neutral-500 mt-4">
-          Dica: configure em Supabase &rarr; Authentication &rarr; URL de site como sua URL do Vercel para os links por e-mail.
+          Dica: configure em Supabase → Authentication → Site URL como a URL do seu Vercel para os links por e-mail.
         </p>
       </div>
     </main>
   )
 }
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={
+      <main className="flex-1 overflow-y-auto p-6 bg-neutral-50">
+        <div className="max-w-md mx-auto bg-white rounded-xl shadow-card p-6">
+          <p className="text-neutral-600">Carregando…</p>
+        </div>
+      </main>
+    }>
+      <LoginInner />
+    </Suspense>
+  )
+}
+
