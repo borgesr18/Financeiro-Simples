@@ -1,141 +1,97 @@
-'use client'
-import { Suspense, useState } from 'react'
-import { useRouter, useSearchParams } from 'next/navigation'
-import { z } from 'zod'
-import { zodResolver } from '@hookform/resolvers/zod'
-import { useForm } from 'react-hook-form'
-import { createBrowserClient } from '@supabase/ssr'
+// app/login/page.tsx
+import Link from 'next/link'
+import { signInAction } from './actions'
 
-// evita prerender estático da rota /login
 export const dynamic = 'force-dynamic'
 
-const schema = z.object({
-  email: z.string().email('Informe um e-mail válido'),
-  password: z.string().min(6, 'Mínimo de 6 caracteres').optional(),
-})
-type FormData = z.infer<typeof schema>
-
-function LoginInner() {
-  const router = useRouter()
-  const params = useSearchParams()
-  const redirectTo = params.get('redirectTo') || '/'
-  const supabase = createBrowserClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-  )
-
-  const [mode, setMode] = useState<'signin' | 'signup' | 'magic'>('signin')
-  const [msg, setMsg] = useState<string | null>(null)
-  const [err, setErr] = useState<string | null>(null)
-
-  const { register, handleSubmit, formState: { errors, isSubmitting } } = useForm<FormData>({
-    resolver: zodResolver(schema),
-  })
-
-  async function onSubmit(data: FormData) {
-    setMsg(null); setErr(null)
-    try {
-      if (mode === 'signin') {
-        if (!data.password) { setErr('Informe a senha.'); return }
-        const { error } = await supabase.auth.signInWithPassword({
-          email: data.email,
-          password: data.password,
-        })
-        if (error) throw error
-        router.replace(redirectTo)
-        router.refresh()
-        return
-      }
-
-      if (mode === 'signup') {
-        if (!data.password) { setErr('Crie uma senha (mín. 6).'); return }
-        const { error } = await supabase.auth.signUp({
-          email: data.email,
-          password: data.password,
-          options: { emailRedirectTo: `${location.origin}` },
-        })
-        if (error) throw error
-        setMsg('Conta criada! Verifique seu e-mail, se necessário, e faça login.')
-        return
-      }
-
-      // magic link
-      if (mode === 'magic') {
-        const { error } = await supabase.auth.signInWithOtp({
-          email: data.email,
-          options: { emailRedirectTo: `${location.origin}` },
-        })
-        if (error) throw error
-        setMsg('Enviamos um link de login para o seu e-mail.')
-        return
-      }
-    } catch (e: any) {
-      setErr(e?.message ?? 'Erro ao autenticar')
-    }
-  }
+export default async function LoginPage({
+  searchParams,
+}: {
+  searchParams?: { redirectTo?: string; error?: string }
+}) {
+  const redirectTo = searchParams?.redirectTo || '/'
+  const errorMsg = searchParams?.error
 
   return (
     <main className="flex-1 overflow-y-auto p-6 bg-neutral-50">
-      <div className="max-w-md mx-auto bg-white rounded-xl shadow-card p-6">
-        <h1 className="text-xl font-semibold mb-1">Acessar sua conta</h1>
-        <p className="text-sm text-neutral-500 mb-4">Financeiro Simples</p>
-
-        <div className="flex gap-2 mb-4">
-          <button
-            className={`px-3 py-1.5 rounded-lg text-sm border ${mode==='signin'?'bg-primary-50 text-primary-600 border-primary-200':'border-neutral-200'}`}
-            onClick={() => setMode('signin')}
-          >Entrar</button>
-          <button
-            className={`px-3 py-1.5 rounded-lg text-sm border ${mode==='signup'?'bg-primary-50 text-primary-600 border-primary-200':'border-neutral-200'}`}
-            onClick={() => setMode('signup')}
-          >Registrar</button>
-          <button
-            className={`px-3 py-1.5 rounded-lg text-sm border ${mode==='magic'?'bg-primary-50 text-primary-600 border-primary-200':'border-neutral-200'}`}
-            onClick={() => setMode('magic')}
-          >Link por e-mail</button>
-        </div>
-
-        <form onSubmit={handleSubmit(onSubmit)} className="space-y-3">
-          <div>
-            <label className="block text-sm text-neutral-600 mb-1">E-mail</label>
-            <input type="email" className="w-full border border-neutral-200 rounded-lg px-3 py-2" {...register('email')} />
-            {errors.email && <p className="text-danger text-sm mt-1">{errors.email.message}</p>}
+      <div className="max-w-md mx-auto">
+        <div className="bg-white rounded-xl shadow-card p-6">
+          <div className="mb-5">
+            <h1 className="text-2xl font-bold text-neutral-800">Entrar</h1>
+            <p className="text-neutral-500">
+              Acesse sua conta para gerenciar seus gastos.
+            </p>
           </div>
 
-          {mode !== 'magic' && (
-            <div>
-              <label className="block text-sm text-neutral-600 mb-1">Senha</label>
-              <input type="password" className="w-full border border-neutral-200 rounded-lg px-3 py-2" {...register('password')} />
-              {errors.password && <p className="text-danger text-sm mt-1">{errors.password.message}</p>}
+          {errorMsg ? (
+            <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+              {decodeURIComponent(errorMsg)}
             </div>
-          )}
+          ) : null}
 
-          {err && <div className="text-danger text-sm">{err}</div>}
-          {msg && <div className="text-success text-sm">{msg}</div>}
+          {/* Formulário: usa Server Action (pode setar cookies com segurança) */}
+          <form action={signInAction} className="space-y-4">
+            <input type="hidden" name="redirectTo" value={redirectTo} />
 
-          <button disabled={isSubmitting} className="w-full px-4 py-2 bg-primary-500 text-white rounded-lg hover:bg-primary-600 disabled:opacity-60">
-            {mode === 'signin' ? 'Entrar' : mode === 'signup' ? 'Criar conta' : 'Enviar link'}
-          </button>
-        </form>
+            <div className="space-y-1.5">
+              <label htmlFor="email" className="text-sm font-medium text-neutral-700">
+                E-mail
+              </label>
+              <input
+                id="email"
+                name="email"
+                type="email"
+                required
+                autoComplete="email"
+                className="w-full rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-2 outline-none focus:border-primary-300 focus:ring-2 focus:ring-primary-300"
+                placeholder="voce@email.com"
+              />
+            </div>
 
-        <p className="text-xs text-neutral-500 mt-4">
-          Dica: em Supabase → Authentication → <b>Site URL</b> use a URL do seu Vercel (para os links por e-mail).
+            <div className="space-y-1.5">
+              <label htmlFor="password" className="text-sm font-medium text-neutral-700">
+                Senha
+              </label>
+              <input
+                id="password"
+                name="password"
+                type="password"
+                required
+                autoComplete="current-password"
+                className="w-full rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-2 outline-none focus:border-primary-300 focus:ring-2 focus:ring-primary-300"
+                placeholder="••••••••"
+              />
+            </div>
+
+            <button
+              type="submit"
+              className="w-full px-4 py-2 rounded-lg bg-primary-500 text-white font-medium hover:bg-primary-600 transition-colors"
+            >
+              Entrar
+            </button>
+          </form>
+
+          <div className="mt-4 flex items-center justify-between text-sm">
+            <Link
+              href="/"
+              className="text-neutral-600 hover:text-neutral-800 hover:underline"
+            >
+              Voltar ao Dashboard
+            </Link>
+            <Link
+              href="/signup"
+              className="text-primary-600 hover:text-primary-700 hover:underline"
+            >
+              Criar conta
+            </Link>
+          </div>
+        </div>
+
+        <p className="mt-4 text-center text-xs text-neutral-400">
+          Protegido por autenticação Supabase.
         </p>
       </div>
     </main>
   )
 }
 
-export default function LoginPage() {
-  return (
-    <Suspense fallback={
-      <main className="flex-1 overflow-y-auto p-6 bg-neutral-50">
-        <div className="max-w-md mx-auto bg-white rounded-xl shadow-card p-6">
-          <p className="text-neutral-600">Carregando…</p>
-        </div>
-      </main>
-    }>
-      <LoginInner />
-    </Suspense>
-  )
-}
