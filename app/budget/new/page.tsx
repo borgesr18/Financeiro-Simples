@@ -36,6 +36,12 @@ export default async function BudgetNewPage({
   const y = Number.isFinite(Number(searchParams?.year)) ? Number(searchParams?.year) : now.getFullYear()
   const m = Number.isFinite(Number(searchParams?.month)) ? Number(searchParams?.month) : now.getMonth() + 1
 
+  // 🔧 Wrapper que retorna Promise<void>
+  const doCreate = async (formData: FormData) => {
+    'use server'
+    await createBudget(formData)
+  }
+
   return (
     <main className="flex-1 p-6 bg-neutral-50">
       <div className="max-w-xl mx-auto bg-white rounded-xl shadow-card p-6 space-y-4">
@@ -46,7 +52,7 @@ export default async function BudgetNewPage({
           </Link>
         </div>
 
-        <form action={createBudget} className="space-y-4">
+        <form action={doCreate} className="space-y-4">
           <div>
             <label className="block text-sm text-neutral-600 mb-1">Categoria</label>
             <input
