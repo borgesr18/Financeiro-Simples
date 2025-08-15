@@ -4,7 +4,7 @@ import {
   FaCar,
   FaBolt,
   FaPiggyBank,
-  FaShoppingCart,
+  FaCartShopping, // nome correto no FA6
   FaHeart,
   FaGraduationCap,
   FaHouse,
@@ -15,7 +15,7 @@ export const ICON_OPTIONS = [
   { slug: "car",      label: "Transporte",  Comp: FaCar },
   { slug: "bolt",     label: "Energia",     Comp: FaBolt },
   { slug: "piggy",    label: "Poupança",    Comp: FaPiggyBank },
-  { slug: "cart",     label: "Compras",     Comp: FaShoppingCart },
+  { slug: "cart",     label: "Compras",     Comp: FaCartShopping },
   { slug: "heart",    label: "Saúde",       Comp: FaHeart },
   { slug: "grad",     label: "Educação",    Comp: FaGraduationCap },
   { slug: "home",     label: "Casa",        Comp: FaHouse },
@@ -25,5 +25,5 @@ export type IconSlug = typeof ICON_OPTIONS[number]["slug"];
 
 export function resolveIcon(slug?: string | null) {
   const found = ICON_OPTIONS.find((i) => i.slug === slug);
-  return found?.Comp ?? FaShoppingCart;
+  return found?.Comp ?? FaCartShopping; // fallback
 }
