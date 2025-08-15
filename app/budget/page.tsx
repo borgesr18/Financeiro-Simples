@@ -25,22 +25,15 @@ export default async function BudgetsPage({
   searchParams?: { month?: string; year?: string }
 }) {
   const supabase = createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+  const { data: { user } } = await supabase.auth.getUser()
 
   if (!user) {
     return (
       <main className="flex-1 overflow-y-auto p-6 bg-neutral-50">
         <div className="max-w-xl mx-auto bg-white rounded-xl shadow-card p-6">
           <h2 className="text-xl font-semibold mb-2">Orçamentos</h2>
-          <p className="text-neutral-600 mb-4">
-            Faça login para ver e definir suas metas por categoria.
-          </p>
-          <Link
-            href="/login"
-            className="px-4 py-2 bg-primary-500 text-white rounded-lg hover:bg-primary-600"
-          >
+          <p className="text-neutral-600 mb-4">Faça login para ver e definir suas metas por categoria.</p>
+          <Link href="/login" className="px-4 py-2 bg-primary-500 text-white rounded-lg hover:bg-primary-600">
             Entrar
           </Link>
         </div>
@@ -70,7 +63,6 @@ export default async function BudgetsPage({
 
   return (
     <main className="flex-1 overflow-y-auto p-4 md:p-6 bg-neutral-50">
-      {/* Cabeçalho e navegação de período */}
       <div className="mb-6 flex items-center justify-between">
         <div>
           <h2 className="text-2xl font-bold text-neutral-800">Orçamentos</h2>
@@ -100,20 +92,16 @@ export default async function BudgetsPage({
         </div>
       </div>
 
-      {/* Feedback de erro amigável */}
       {loadError && (
         <div className="mb-6 p-4 border border-red-200 bg-red-50 text-red-700 rounded-lg">
           {loadError}
         </div>
       )}
 
-      {/* Cards totais */}
       <section className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
         <div className="bg-white rounded-xl shadow-card p-5">
           <div className="text-neutral-500 text-sm">Limite total</div>
-          <div className="text-2xl font-bold text-neutral-800">
-            {brl(totalLimit)}
-          </div>
+          <div className="text-2xl font-bold text-neutral-800">{brl(totalLimit)}</div>
         </div>
         <div className="bg-white rounded-xl shadow-card p-5">
           <div className="text-neutral-500 text-sm">Gasto total</div>
@@ -121,17 +109,12 @@ export default async function BudgetsPage({
         </div>
         <div className="bg-white rounded-xl shadow-card p-5">
           <div className="text-neutral-500 text-sm">Saldo das metas</div>
-          <div
-            className={`text-2xl font-bold ${
-              totalLimit - totalSpent >= 0 ? 'text-neutral-800' : 'text-danger'
-            }`}
-          >
+          <div className={`text-2xl font-bold ${totalLimit - totalSpent >= 0 ? 'text-neutral-800' : 'text-danger'}`}>
             {brl(totalLimit - totalSpent)}
           </div>
         </div>
       </section>
 
-      {/* Lista de categorias com barras e ações */}
       <section className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {lines.length ? (
           lines.map((l) => (
@@ -149,9 +132,7 @@ export default async function BudgetsPage({
               ) : (
                 <div className="flex justify-end">
                   <a
-                    href={`/budgets/new?category=${encodeURIComponent(
-                      l.category
-                    )}&year=${y}&month=${m}&amount=${l.spent || 0}`}
+                    href={`/budgets/new?category=${encodeURIComponent(l.category)}&year=${y}&month=${m}&amount=${l.spent || 0}`}
                     className="text-sm text-primary-600 hover:underline"
                   >
                     Criar meta para “{l.category}”
@@ -171,4 +152,3 @@ export default async function BudgetsPage({
     </main>
   )
 }
-
