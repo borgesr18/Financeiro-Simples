@@ -1,10 +1,13 @@
 // app/layout.tsx
-import './globals.css'
+import type { Metadata } from 'next'
 import Link from 'next/link'
 import { Inter } from 'next/font/google'
+import './globals.css'
+
+// IMPORTANTES: somente ícones que existem no fa6
 import {
   FaWallet,
-  FaHome,
+  FaHouse,
   FaList,
   FaChartPie,
   FaBullseye,
@@ -17,19 +20,20 @@ import {
   FaPlus,
   FaSearch,
   FaCog,
-  FaQuestionCircle,
-  FaFile, // <- substitui FaFileAlt
-} from 'react-icons/fa'
-import AuthMenu from '@/components/AuthMenu'
+} from 'react-icons/fa6'
 
 const inter = Inter({ subsets: ['latin'], variable: '--font-inter' })
 
-export const metadata = {
-  title: 'Financeiro Simples',
-  description: 'Controle de gastos pessoal',
+export const metadata: Metadata = {
+  title: 'FinTrack',
+  description: 'Controle financeiro simples com Next.js + Supabase',
 }
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default function RootLayout({
+  children,
+}: {
+  children: React.ReactNode
+}) {
   return (
     <html lang="pt-BR" className={inter.variable}>
       <body className="bg-neutral-50 text-neutral-800 font-sans">
@@ -46,16 +50,19 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
 
             {/* Navegação */}
             <nav className="flex-1 overflow-y-auto p-3">
+              {/* Principal */}
               <div className="mb-6">
-                <h2 className="text-xs font-semibold text-neutral-400 uppercase tracking-wider mb-2 px-3">Main</h2>
+                <h2 className="text-xs font-semibold text-neutral-400 uppercase tracking-wider mb-2 px-3">
+                  Principal
+                </h2>
                 <ul>
                   <li className="mb-1">
                     <Link
                       href="/"
                       className="flex items-center px-3 py-2 rounded-lg text-primary-600 bg-primary-50 font-medium"
                     >
-                      <FaHome className="w-5 mr-2" />
-                      Dashboard
+                      <FaHouse className="w-5 mr-2" />
+                      Painel
                     </Link>
                   </li>
                   <li className="mb-1">
@@ -64,16 +71,17 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                       className="flex items-center px-3 py-2 rounded-lg text-neutral-600 hover:bg-neutral-50 font-medium"
                     >
                       <FaList className="w-5 mr-2" />
-                      Transactions
+                      Lançamentos
                     </Link>
                   </li>
                   <li className="mb-1">
+                    {/* Seu caminho atual de orçamentos é /budget */}
                     <Link
                       href="/budget"
                       className="flex items-center px-3 py-2 rounded-lg text-neutral-600 hover:bg-neutral-50 font-medium"
                     >
                       <FaChartPie className="w-5 mr-2" />
-                      Budgets
+                      Orçamentos
                     </Link>
                   </li>
                   <li className="mb-1">
@@ -82,14 +90,17 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                       className="flex items-center px-3 py-2 rounded-lg text-neutral-600 hover:bg-neutral-50 font-medium"
                     >
                       <FaBullseye className="w-5 mr-2" />
-                      Goals
+                      Metas
                     </Link>
                   </li>
                 </ul>
               </div>
 
+              {/* Contas */}
               <div className="mb-6">
-                <h2 className="text-xs font-semibold text-neutral-400 uppercase tracking-wider mb-2 px-3">Accounts</h2>
+                <h2 className="text-xs font-semibold text-neutral-400 uppercase tracking-wider mb-2 px-3">
+                  Contas
+                </h2>
                 <ul>
                   <li className="mb-1">
                     <Link
@@ -97,7 +108,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                       className="flex items-center px-3 py-2 rounded-lg text-neutral-600 hover:bg-neutral-50 font-medium"
                     >
                       <FaLandmark className="w-5 mr-2" />
-                      Banking
+                      Bancos
                     </Link>
                   </li>
                   <li className="mb-1">
@@ -106,7 +117,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                       className="flex items-center px-3 py-2 rounded-lg text-neutral-600 hover:bg-neutral-50 font-medium"
                     >
                       <FaCreditCard className="w-5 mr-2" />
-                      Cards
+                      Cartões
                     </Link>
                   </li>
                   <li className="mb-1">
@@ -115,68 +126,106 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                       className="flex items-center px-3 py-2 rounded-lg text-neutral-600 hover:bg-neutral-50 font-medium"
                     >
                       <FaChartLine className="w-5 mr-2" />
-                      Investments
+                      Investimentos
                     </Link>
                   </li>
                 </ul>
               </div>
 
+              {/* Insights */}
               <div className="mb-6">
-                <h2 className="text-xs font-semibold text-neutral-400 uppercase tracking-wider mb-2 px-3">Insights</h2>
+                <h2 className="text-xs font-semibold text-neutral-400 uppercase tracking-wider mb-2 px-3">
+                  Insights
+                </h2>
                 <ul>
                   <li className="mb-1">
                     <Link
                       href="/reports"
                       className="flex items-center px-3 py-2 rounded-lg text-neutral-600 hover:bg-neutral-50 font-medium"
                     >
-                      <FaFile className="w-5 mr-2" />
-                      Reports
+                      <FaChartBar className="w-5 mr-2" />
+                      Relatórios
                     </Link>
                   </li>
                   <li className="mb-1">
-                    <span className="flex items-center px-3 py-2 rounded-lg text-neutral-400 font-medium cursor-not-allowed">
-                      <FaChartBar className="w-5 mr-2" />
-                      Analytics
-                    </span>
+                    <Link
+                      href="/analytics"
+                      className="flex items-center px-3 py-2 rounded-lg text-neutral-600 hover:bg-neutral-50 font-medium"
+                    >
+                      <FaChartLine className="w-5 mr-2" />
+                      Análises
+                    </Link>
+                  </li>
+                </ul>
+              </div>
+
+              {/* Configurações */}
+              <div className="mb-6">
+                <h2 className="text-xs font-semibold text-neutral-400 uppercase tracking-wider mb-2 px-3">
+                  Configurações
+                </h2>
+                <ul>
+                  <li className="mb-1">
+                    <Link
+                      href="/settings/categories"
+                      className="flex items-center px-3 py-2 rounded-lg text-neutral-600 hover:bg-neutral-50 font-medium"
+                    >
+                      <FaCog className="w-5 mr-2" />
+                      Categorias
+                    </Link>
                   </li>
                 </ul>
               </div>
             </nav>
 
-            {/* Usuário */}
+            {/* Usuário (placeholder) */}
             <div className="p-4 border-t border-neutral-100">
-              <AuthMenu />
+              <div className="flex items-center">
+                <img
+                  src="https://storage.googleapis.com/uxpilot-auth.appspot.com/avatars/avatar-1.jpg"
+                  alt="Avatar"
+                  className="w-9 h-9 rounded-full mr-3"
+                />
+                <div>
+                  <p className="text-sm font-medium text-neutral-800">Usuário</p>
+                  <p className="text-xs text-neutral-500">usuario@example.com</p>
+                </div>
+                <button className="ml-auto text-neutral-400 hover:text-neutral-600">
+                  <FaCog />
+                </button>
+              </div>
             </div>
           </aside>
 
-          {/* Main */}
+          {/* Conteúdo principal */}
           <div className="flex-1 flex flex-col overflow-hidden">
+            {/* Header */}
             <header className="bg-white border-b border-neutral-200 p-4 flex items-center justify-between">
+              {/* Botão menu mobile (não implementa toggle para evitar client-side aqui) */}
               <button className="md:hidden text-neutral-500 hover:text-neutral-700">
                 <FaBars className="text-xl" />
               </button>
 
               <div className="hidden md:block">
-                <h1 className="text-xl font-semibold text-neutral-800">Dashboard</h1>
+                <h1 className="text-xl font-semibold text-neutral-800">Painel</h1>
               </div>
 
+              {/* Busca */}
               <div className="hidden md:block flex-1 max-w-md mx-6">
                 <div className="relative">
                   <FaSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400" />
                   <input
                     type="text"
-                    placeholder="Search transactions, budgets..."
+                    placeholder="Busque lançamentos, orçamentos..."
                     className="w-full pl-10 pr-4 py-2 bg-neutral-50 border border-neutral-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-300 focus:border-primary-300"
                   />
                 </div>
               </div>
 
+              {/* Ações à direita */}
               <div className="flex items-center space-x-3">
                 <button className="p-2 text-neutral-500 hover:text-neutral-700 hover:bg-neutral-50 rounded-full">
                   <FaBell />
-                </button>
-                <button className="p-2 text-neutral-500 hover:text-neutral-700 hover:bg-neutral-50 rounded-full">
-                  <FaQuestionCircle />
                 </button>
                 <Link
                   href="/add"
@@ -188,7 +237,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               </div>
             </header>
 
-            {/* Page outlet */}
+            {/* Onde as páginas renderizam */}
             {children}
           </div>
         </div>
