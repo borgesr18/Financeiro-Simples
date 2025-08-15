@@ -3,6 +3,7 @@ import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
 import { brl } from '@/lib/format'
 import TransactionsFilters from '@/components/TransactionsFilters'
+import TransactionRowActions from '@/components/TransactionRowActions'
 
 export const dynamic = 'force-dynamic'
 
@@ -43,7 +44,6 @@ export default async function TransactionsPage({
 
   const { data, count, error } = await query.range(fromIdx, toIdx)
 
-  // Em produção, você pode logar no provider de logs:
   if (error) {
     console.error('[transactions] fetch error:', error)
   }
@@ -51,7 +51,7 @@ export default async function TransactionsPage({
   const total = count ?? 0
   const pages = Math.max(1, Math.ceil(total / pageSize))
 
-  // Helpers simples para montar os links preservando "type"
+  // Helpers para paginação preservando o filtro "type"
   const hrefFor = (p: number) => {
     const params = new URLSearchParams()
     params.set('type', type)
@@ -86,10 +86,11 @@ export default async function TransactionsPage({
               <th className="text-left px-4 py-3">Descrição</th>
               <th className="text-left px-4 py-3">Categoria</th>
               <th className="text-right px-4 py-3">Valor</th>
+              <th className="text-right px-4 py-3 w-40">Ações</th>
             </tr>
           </thead>
           <tbody>
-            {data?.map((t) => (
+            {data?.map((t: any) => (
               <tr key={t.id} className="border-t border-neutral-100 hover:bg-neutral-50">
                 <td className="px-4 py-3">
                   {new Date(t.date).toLocaleDateString('pt-BR')}
@@ -98,16 +99,19 @@ export default async function TransactionsPage({
                 <td className="px-4 py-3">{t.category ?? '—'}</td>
                 <td
                   className={`px-4 py-3 text-right font-medium ${
-                    t.amount < 0 ? 'text-danger' : 'text-success'
+                    Number(t.amount) < 0 ? 'text-danger' : 'text-success'
                   }`}
                 >
                   {brl(Number(t.amount))}
+                </td>
+                <td className="px-4 py-3">
+                  <TransactionRowActions id={t.id} />
                 </td>
               </tr>
             ))}
             {!data?.length && (
               <tr>
-                <td colSpan={4} className="px-4 py-8 text-center text-neutral-500">
+                <td colSpan={5} className="px-4 py-8 text-center text-neutral-500">
                   Nenhum lançamento no período.
                 </td>
               </tr>
@@ -150,3 +154,4 @@ export default async function TransactionsPage({
     </main>
   )
 }
+
