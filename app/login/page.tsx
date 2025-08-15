@@ -6,7 +6,7 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { useForm } from 'react-hook-form'
 import { createBrowserClient } from '@supabase/ssr'
 
-// força render dinâmico (evita tentar prerender /login)
+// evita prerender estático da rota /login
 export const dynamic = 'force-dynamic'
 
 const schema = z.object({
@@ -36,9 +36,10 @@ function LoginInner() {
     setMsg(null); setErr(null)
     try {
       if (mode === 'signin') {
+        if (!data.password) { setErr('Informe a senha.'); return }
         const { error } = await supabase.auth.signInWithPassword({
           email: data.email,
-          password: data.password ?? '',
+          password: data.password,
         })
         if (error) throw error
         router.replace(redirectTo)
@@ -47,9 +48,10 @@ function LoginInner() {
       }
 
       if (mode === 'signup') {
+        if (!data.password) { setErr('Crie uma senha (mín. 6).'); return }
         const { error } = await supabase.auth.signUp({
           email: data.email,
-          password: data.password ?? '',
+          password: data.password,
           options: { emailRedirectTo: `${location.origin}` },
         })
         if (error) throw error
@@ -57,6 +59,7 @@ function LoginInner() {
         return
       }
 
+      // magic link
       if (mode === 'magic') {
         const { error } = await supabase.auth.signInWithOtp({
           email: data.email,
@@ -116,7 +119,7 @@ function LoginInner() {
         </form>
 
         <p className="text-xs text-neutral-500 mt-4">
-          Dica: configure em Supabase → Authentication → Site URL como a URL do seu Vercel para os links por e-mail.
+          Dica: em Supabase → Authentication → <b>Site URL</b> use a URL do seu Vercel (para os links por e-mail).
         </p>
       </div>
     </main>
@@ -136,4 +139,3 @@ export default function LoginPage() {
     </Suspense>
   )
 }
-
