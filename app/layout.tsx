@@ -4,7 +4,6 @@ import Link from 'next/link'
 import { Inter } from 'next/font/google'
 import './globals.css'
 
-// IMPORTANTES: somente ícones que existem no fa6
 import {
   FaWallet,
   FaHouse,
@@ -18,8 +17,8 @@ import {
   FaBars,
   FaBell,
   FaPlus,
-  FaSearch,
-  FaCog,
+  FaMagnifyingGlass, // <— substitui o antigo FaSearch
+  FaGear,            // <— substitui o antigo FaCog
 } from 'react-icons/fa6'
 
 const inter = Inter({ subsets: ['latin'], variable: '--font-inter' })
@@ -75,9 +74,8 @@ export default function RootLayout({
                     </Link>
                   </li>
                   <li className="mb-1">
-                    {/* Seu caminho atual de orçamentos é /budget */}
                     <Link
-                      href="/budget"
+                      href="/budget" // caminho atual dos orçamentos
                       className="flex items-center px-3 py-2 rounded-lg text-neutral-600 hover:bg-neutral-50 font-medium"
                     >
                       <FaChartPie className="w-5 mr-2" />
@@ -170,7 +168,7 @@ export default function RootLayout({
                       href="/settings/categories"
                       className="flex items-center px-3 py-2 rounded-lg text-neutral-600 hover:bg-neutral-50 font-medium"
                     >
-                      <FaCog className="w-5 mr-2" />
+                      <FaGear className="w-5 mr-2" />
                       Categorias
                     </Link>
                   </li>
@@ -191,7 +189,7 @@ export default function RootLayout({
                   <p className="text-xs text-neutral-500">usuario@example.com</p>
                 </div>
                 <button className="ml-auto text-neutral-400 hover:text-neutral-600">
-                  <FaCog />
+                  <FaGear />
                 </button>
               </div>
             </div>
@@ -201,7 +199,7 @@ export default function RootLayout({
           <div className="flex-1 flex flex-col overflow-hidden">
             {/* Header */}
             <header className="bg-white border-b border-neutral-200 p-4 flex items-center justify-between">
-              {/* Botão menu mobile (não implementa toggle para evitar client-side aqui) */}
+              {/* Botão menu mobile */}
               <button className="md:hidden text-neutral-500 hover:text-neutral-700">
                 <FaBars className="text-xl" />
               </button>
@@ -213,7 +211,7 @@ export default function RootLayout({
               {/* Busca */}
               <div className="hidden md:block flex-1 max-w-md mx-6">
                 <div className="relative">
-                  <FaSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400" />
+                  <FaMagnifyingGlass className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400" />
                   <input
                     type="text"
                     placeholder="Busque lançamentos, orçamentos..."
@@ -245,3 +243,4 @@ export default function RootLayout({
     </html>
   )
 }
+
