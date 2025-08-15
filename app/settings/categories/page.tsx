@@ -8,7 +8,7 @@ import {
   FaCar,
   FaBolt,
   FaPiggyBank,
-  FaShoppingCart,
+  FaCartShopping, // <- corrigido
   FaHeart,
   FaGraduationCap,
   FaHouse,
@@ -26,7 +26,7 @@ const ICON_OPTIONS = [
   { slug: 'car',      label: 'Transporte',  Comp: FaCar },
   { slug: 'bolt',     label: 'Energia',     Comp: FaBolt },
   { slug: 'piggy',    label: 'Poupança',    Comp: FaPiggyBank },
-  { slug: 'cart',     label: 'Compras',     Comp: FaShoppingCart },
+  { slug: 'cart',     label: 'Compras',     Comp: FaCartShopping }, // <- corrigido
   { slug: 'heart',    label: 'Saúde',       Comp: FaHeart },
   { slug: 'grad',     label: 'Educação',    Comp: FaGraduationCap },
   { slug: 'home',     label: 'Casa',        Comp: FaHouse },
@@ -34,7 +34,7 @@ const ICON_OPTIONS = [
 
 function resolveIcon(slug?: string | null) {
   const found = ICON_OPTIONS.find(i => i.slug === slug)
-  return (found?.Comp ?? FaShoppingCart)
+  return (found?.Comp ?? FaCartShopping) // <- fallback corrigido
 }
 
 async function getData() {
@@ -45,13 +45,12 @@ async function getData() {
   const { data, error } = await supabase
     .from('categories')
     .select('id, name, color, icon')
+    .eq('user_id', user.id)
     .order('name')
 
   if (error) {
-    // Em produção você pode logar isso (Sentry, etc.)
     return { user, categories: [] as Category[] }
   }
-
   return { user, categories: (data ?? []) as Category[] }
 }
 
@@ -69,7 +68,7 @@ export default async function CategoriesPage() {
     )
   }
 
-  // wrappers para as server actions (implemente-as em app/settings/categories/actions.ts)
+  // server actions wrappers
   const doCreate = async (fd: FormData) => { 'use server'
     const { createCategory } = await import('./actions')
     await createCategory(fd)
@@ -96,18 +95,17 @@ export default async function CategoriesPage() {
             />
           </div>
 
-          <div className="md:col-span-1">
+          <div>
             <label className="block text-xs text-neutral-600 mb-1">Cor</label>
             <input
               type="color"
               name="color"
               defaultValue="#6b7280"
               className="h-[42px] w-full rounded-lg border px-1"
-              // opcional: pattern de validação no client
             />
           </div>
 
-          <div className="md:col-span-1">
+          <div>
             <label className="block text-xs text-neutral-600 mb-1">Ícone</label>
             <select
               name="icon"
@@ -121,14 +119,14 @@ export default async function CategoriesPage() {
             </select>
           </div>
 
-          <div className="md:col-span-1">
+          <div>
             <button className="w-full px-4 py-2 bg-primary-500 text-white rounded-lg">
               Adicionar
             </button>
           </div>
         </form>
 
-        {/* Lista de categorias */}
+        {/* Lista */}
         <ul className="divide-y">
           {categories.map((c) => {
             const Icon = resolveIcon(c.icon ?? undefined)
