@@ -1,3 +1,4 @@
+// app/login/actions.ts
 'use server'
 
 import { redirect } from 'next/navigation'
@@ -11,7 +12,9 @@ export async function signInAction(formData: FormData): Promise<void> {
 
   if (!email || !password) {
     redirect(
-      `/login?error=${encodeURIComponent('Informe e-mail e senha')}&redirectTo=${encodeURIComponent(redirectTo)}`
+      `/login?error=${encodeURIComponent('Informe e-mail e senha')}&redirectTo=${encodeURIComponent(
+        redirectTo
+      )}`,
     )
   }
 
@@ -28,37 +31,40 @@ export async function signInAction(formData: FormData): Promise<void> {
         set(
           name: string,
           value: string,
-          options?: Parameters<typeof cookieStore.set>[1]
+          options?: Parameters<typeof cookieStore.set>[2] // opções do cookies().set
         ) {
-          // Evita spread de valor possivelmente undefined
           if (options) {
-            cookieStore.set({ name, value, ...options })
+            cookieStore.set(name, value, options)
           } else {
-            cookieStore.set({ name, value })
+            cookieStore.set(name, value)
           }
         },
         remove(
           name: string,
-          options?: Parameters<typeof cookieStore.set>[1]
+          options?: Parameters<typeof cookieStore.set>[2]
         ) {
-          const base = { name, value: '', expires: new Date(0) }
+          // expira o cookie; se vierem options usamos a mesma assinatura posicional
+          const base = { expires: new Date(0) }
           if (options) {
-            cookieStore.set({ ...base, ...options })
+            cookieStore.set(name, '', { ...base, ...options })
           } else {
-            cookieStore.set(base)
+            cookieStore.set(name, '', base)
           }
         },
       },
-    }
+    },
   )
 
   const { error } = await supabase.auth.signInWithPassword({ email, password })
   if (error) {
     redirect(
-      `/login?error=${encodeURIComponent(error.message)}&redirectTo=${encodeURIComponent(redirectTo)}`
+      `/login?error=${encodeURIComponent(error.message)}&redirectTo=${encodeURIComponent(
+        redirectTo,
+      )}`,
     )
   }
 
   redirect(redirectTo)
 }
+
 
