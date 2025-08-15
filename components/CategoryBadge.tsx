@@ -11,7 +11,7 @@ export function CategoryBadge({
   icon?: string | null;
 }) {
   const Icon = resolveIcon(icon ?? undefined);
-  const bg = (color ?? "#64748b") + "20"; // transparência simples
+  const bg = (color ?? "#64748b") + "20";
   const fg = color ?? "#64748b";
 
   return (
