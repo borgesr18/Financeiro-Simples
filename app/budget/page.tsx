@@ -8,7 +8,7 @@ import Link from 'next/link'
 
 export const dynamic = 'force-dynamic'
 
-// Tipo mínimo usado pela UI (alinhe com o retorno real de getBudgetsWithSpend)
+// Ajuste este tipo para refletir exatamente o que seu helper retorna.
 type BudgetLine = {
   id?: string
   category: string
@@ -68,10 +68,8 @@ export default async function BudgetPage({
 
   let lines: BudgetLine[] = []
   try {
-    // Se seu helper já tipa o retorno, você pode usar:
-    // let tmp = await getBudgetsWithSpend(supabase, user.id, y, m);
-    // lines = tmp as BudgetLine[];
-    const tmp = await getBudgetsWithSpend(supabase, user.id, y, m)
+    // ✅ assinatura correta: (supabase, year, month)
+    const tmp = await getBudgetsWithSpend(supabase, y, m)
     lines = (tmp ?? []) as BudgetLine[]
   } catch (e) {
     console.error('Erro ao carregar budgets:', e)
@@ -194,4 +192,3 @@ export default async function BudgetPage({
     </main>
   )
 }
-
