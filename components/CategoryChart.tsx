@@ -1,6 +1,11 @@
 'use client'
 import Highcharts from 'highcharts'
 import HighchartsReact from 'highcharts-react-official'
+import Accessibility from 'highcharts/modules/accessibility'
+Accessibility(Highcharts) // <-- adicione esta linha
+
+// ... resto inalterado
+
 
 export default function CategoryChart() {
   const options: Highcharts.Options = {
