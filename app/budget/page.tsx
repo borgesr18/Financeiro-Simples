@@ -52,7 +52,15 @@ export default async function BudgetsPage({
   const y = Number(searchParams?.year ?? y0)
   const m = Number(searchParams?.month ?? m0)
 
-  const lines = await getBudgetsWithSpend(supabase, y, m)
+  let lines: Awaited<ReturnType<typeof getBudgetsWithSpend>> = []
+  let loadError: string | null = null
+
+  try {
+    lines = await getBudgetsWithSpend(supabase, y, m)
+  } catch (e: any) {
+    console.error('Erro ao carregar budgets:', e)
+    loadError = e?.message ?? 'Falha ao carregar dados'
+  }
 
   const totalLimit = lines.reduce((s, l) => s + (l.amount || 0), 0)
   const totalSpent = lines.reduce((s, l) => s + (l.spent || 0), 0)
@@ -72,19 +80,13 @@ export default async function BudgetsPage({
         </div>
         <div className="flex gap-2">
           <Link
-            href={`/budgets${qs(
-              prev.getFullYear(),
-              prev.getMonth() + 1
-            )}`}
+            href={`/budgets${qs(prev.getFullYear(), prev.getMonth() + 1)}`}
             className="px-3 py-1.5 rounded border border-neutral-200 hover:bg-neutral-50"
           >
             ◀
           </Link>
           <Link
-            href={`/budgets${qs(
-              next.getFullYear(),
-              next.getMonth() + 1
-            )}`}
+            href={`/budgets${qs(next.getFullYear(), next.getMonth() + 1)}`}
             className="px-3 py-1.5 rounded border border-neutral-200 hover:bg-neutral-50"
           >
             ▶
@@ -97,6 +99,13 @@ export default async function BudgetsPage({
           </Link>
         </div>
       </div>
+
+      {/* Feedback de erro amigável */}
+      {loadError && (
+        <div className="mb-6 p-4 border border-red-200 bg-red-50 text-red-700 rounded-lg">
+          {loadError}
+        </div>
+      )}
 
       {/* Cards totais */}
       <section className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
@@ -162,3 +171,4 @@ export default async function BudgetsPage({
     </main>
   )
 }
+
