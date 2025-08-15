@@ -1,13 +1,58 @@
+// app/settings/categories/page.tsx
 export const dynamic = 'force-dynamic'
+
 import { createClient } from '@/lib/supabase/server'
 import Link from 'next/link'
+import {
+  FaUtensils,
+  FaCar,
+  FaBolt,
+  FaPiggyBank,
+  FaShoppingCart,
+  FaHeart,
+  FaGraduationCap,
+  FaHouse,
+} from 'react-icons/fa6'
+
+type Category = {
+  id: string
+  name: string
+  color: string | null
+  icon: string | null
+}
+
+const ICON_OPTIONS = [
+  { slug: 'utensils', label: 'Alimentação', Comp: FaUtensils },
+  { slug: 'car',      label: 'Transporte',  Comp: FaCar },
+  { slug: 'bolt',     label: 'Energia',     Comp: FaBolt },
+  { slug: 'piggy',    label: 'Poupança',    Comp: FaPiggyBank },
+  { slug: 'cart',     label: 'Compras',     Comp: FaShoppingCart },
+  { slug: 'heart',    label: 'Saúde',       Comp: FaHeart },
+  { slug: 'grad',     label: 'Educação',    Comp: FaGraduationCap },
+  { slug: 'home',     label: 'Casa',        Comp: FaHouse },
+] as const
+
+function resolveIcon(slug?: string | null) {
+  const found = ICON_OPTIONS.find(i => i.slug === slug)
+  return (found?.Comp ?? FaShoppingCart)
+}
 
 async function getData() {
   const supabase = createClient()
   const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return { user: null, categories: [] }
-  const { data } = await supabase.from('categories').select('id, name, color, icon').order('name')
-  return { user, categories: data ?? [] }
+  if (!user) return { user: null as any, categories: [] as Category[] }
+
+  const { data, error } = await supabase
+    .from('categories')
+    .select('id, name, color, icon')
+    .order('name')
+
+  if (error) {
+    // Em produção você pode logar isso (Sentry, etc.)
+    return { user, categories: [] as Category[] }
+  }
+
+  return { user, categories: (data ?? []) as Category[] }
 }
 
 export default async function CategoriesPage() {
@@ -39,23 +84,77 @@ export default async function CategoriesPage() {
       <div className="max-w-2xl mx-auto bg-white rounded-xl shadow-card p-6 space-y-6">
         <h2 className="text-xl font-semibold">Categorias</h2>
 
-        <form action={doCreate} className="grid grid-cols-3 gap-3">
-          <input name="name" placeholder="Nome" className="col-span-2 px-3 py-2 border rounded-lg bg-neutral-50" required />
-          <button className="px-4 py-2 bg-primary-500 text-white rounded-lg">Adicionar</button>
+        {/* Formulário de criação (nome + cor + ícone) */}
+        <form action={doCreate} className="grid grid-cols-1 md:grid-cols-5 gap-3 items-end">
+          <div className="md:col-span-2">
+            <label className="block text-xs text-neutral-600 mb-1">Nome</label>
+            <input
+              name="name"
+              placeholder="Ex.: Alimentação"
+              className="w-full px-3 py-2 border rounded-lg bg-neutral-50"
+              required
+            />
+          </div>
+
+          <div className="md:col-span-1">
+            <label className="block text-xs text-neutral-600 mb-1">Cor</label>
+            <input
+              type="color"
+              name="color"
+              defaultValue="#6b7280"
+              className="h-[42px] w-full rounded-lg border px-1"
+              // opcional: pattern de validação no client
+            />
+          </div>
+
+          <div className="md:col-span-1">
+            <label className="block text-xs text-neutral-600 mb-1">Ícone</label>
+            <select
+              name="icon"
+              className="w-full px-3 py-2 border rounded-lg bg-neutral-50"
+              defaultValue=""
+            >
+              <option value="">(sem ícone)</option>
+              {ICON_OPTIONS.map(opt => (
+                <option key={opt.slug} value={opt.slug}>{opt.label}</option>
+              ))}
+            </select>
+          </div>
+
+          <div className="md:col-span-1">
+            <button className="w-full px-4 py-2 bg-primary-500 text-white rounded-lg">
+              Adicionar
+            </button>
+          </div>
         </form>
 
+        {/* Lista de categorias */}
         <ul className="divide-y">
-          {categories.map((c) => (
-            <li key={c.id} className="py-2 flex items-center justify-between">
-              <span>{c.name}</span>
-              <form action={doDelete}>
-                <input type="hidden" name="id" value={c.id} />
-                <button className="text-sm text-red-600 hover:underline">Excluir</button>
-              </form>
-            </li>
-          ))}
+          {categories.map((c) => {
+            const Icon = resolveIcon(c.icon ?? undefined)
+            const color = c.color ?? '#64748b'
+            return (
+              <li key={c.id} className="py-2 flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <span
+                    className="inline-flex items-center gap-2 rounded-full px-2 py-1 text-xs font-medium"
+                    style={{ backgroundColor: `${color}20`, color }}
+                    title={c.name}
+                  >
+                    <Icon className="h-3.5 w-3.5" />
+                    {c.name}
+                  </span>
+                </div>
+                <form action={doDelete}>
+                  <input type="hidden" name="id" value={c.id} />
+                  <button className="text-sm text-red-600 hover:underline">Excluir</button>
+                </form>
+              </li>
+            )
+          })}
         </ul>
       </div>
     </main>
   )
 }
+
