@@ -1,7 +1,24 @@
 import './globals.css'
 import Link from 'next/link'
 import { Inter } from 'next/font/google'
-import { FaWallet, FaHouse, FaList, FaChartPie, FaBullseye, FaLandmark, FaCreditCard, FaChartLine, FaFileAlt, FaChartBar, FaBars, FaBell, FaQuestionCircle, FaPlus, FaSearch, FaCog } from 'react-icons/fa'
+import {
+  FaWallet,
+  FaHouse,
+  FaList,
+  FaChartPie,
+  FaBullseye,
+  FaLandmark,
+  FaCreditCard,
+  FaChartLine,
+  FaChartBar,
+  FaBars,
+  FaBell,
+  FaPlus,
+  FaCircleQuestion,
+  FaMagnifyingGlass,
+  FaGear,
+  FaFileLines,
+} from 'react-icons/fa6'
 
 const inter = Inter({ subsets: ['latin'], variable: '--font-inter' })
 
@@ -77,7 +94,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                 <ul>
                   <li className="mb-1">
                     <span className="flex items-center px-3 py-2 rounded-lg text-neutral-600 hover:bg-neutral-50 font-medium">
-                      <FaFileAlt className="w-5 mr-2" /> Relatórios
+                      <FaFileLines className="w-5 mr-2" /> Relatórios
                     </span>
                   </li>
                   <li className="mb-1">
@@ -92,12 +109,16 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             {/* Usuário (estático por enquanto) */}
             <div className="p-4 border-t border-neutral-100">
               <div className="flex items-center">
-                <img src="https://storage.googleapis.com/uxpilot-auth.appspot.com/avatars/avatar-1.jpg" alt="avatar" className="w-9 h-9 rounded-full mr-3" />
+                <img
+                  src="https://storage.googleapis.com/uxpilot-auth.appspot.com/avatars/avatar-1.jpg"
+                  alt="avatar"
+                  className="w-9 h-9 rounded-full mr-3"
+                />
                 <div>
                   <p className="text-sm font-medium text-neutral-800">Rodrigo Borges</p>
                   <p className="text-xs text-neutral-500">rodrigo@example.com</p>
                 </div>
-                <button className="ml-auto text-neutral-400 hover:text-neutral-600"><FaCog /></button>
+                <button className="ml-auto text-neutral-400 hover:text-neutral-600"><FaGear /></button>
               </div>
             </div>
           </aside>
@@ -116,7 +137,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
 
               <div className="hidden md:block flex-1 max-w-md mx-6">
                 <div className="relative">
-                  <FaSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400" />
+                  <FaMagnifyingGlass className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400" />
                   <input
                     type="text"
                     placeholder="Buscar lançamentos, orçamentos..."
@@ -127,7 +148,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
 
               <div className="flex items-center space-x-3">
                 <button className="p-2 text-neutral-500 hover:text-neutral-700 hover:bg-neutral-50 rounded-full"><FaBell /></button>
-                <button className="p-2 text-neutral-500 hover:text-neutral-700 hover:bg-neutral-50 rounded-full"><FaQuestionCircle /></button>
+                <button className="p-2 text-neutral-500 hover:text-neutral-700 hover:bg-neutral-50 rounded-full"><FaCircleQuestion /></button>
                 <Link href="/add" className="hidden md:flex items-center px-3 py-2 bg-primary-500 text-white rounded-lg hover:bg-primary-600 transition-colors">
                   <FaPlus className="mr-2" />
                   <span>Novo Lançamento</span>
@@ -142,4 +163,5 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     </html>
   )
 }
+
 
