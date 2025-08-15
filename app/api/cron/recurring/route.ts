@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createClient as createAdminClient } from '@supabase/supabase-js'
 
+export const runtime = 'nodejs'
 export async function GET() {
   // This endpoint is intended for Vercel Cron. It uses a Service Role key (server-only).
   const supabase = createAdminClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
