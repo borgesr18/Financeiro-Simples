@@ -1,205 +1,80 @@
 // app/budget/page.tsx
-import { createClient } from '@/lib/supabase/server'
-import { getBudgetsWithSpend } from '@/lib/budgets'
-import BudgetBar from '@/components/BudgetBar'
-import BudgetRowActions from '@/components/BudgetRowActions'
-import { brl } from '@/lib/format'
-import Link from 'next/link'
-
-export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
-// Ajuste este tipo para refletir exatamente o que seu helper retorna.
-type BudgetLine = {
-  id?: string
-  category: string
-  amount: number
-  spent: number
-  percent: number
-  over: boolean
-  hasBudget: boolean
-}
+import { createClient } from "@/lib/supabase/server";
+import { getBudgetsWithSpend, type BudgetLine } from "@/lib/budgets";
+import BudgetForm from "@/components/BudgetForm";
 
-function nowYM() {
-  const d = new Date()
-  return { y: d.getFullYear(), m: d.getMonth() + 1 }
-}
-function monthLabel(m: number) {
-  return new Date(2000, m - 1, 1).toLocaleDateString('pt-BR', { month: 'long' })
-}
-function qs(y: number, m: number) {
-  return `?year=${y}&month=${m}`
-}
-
-export default async function BudgetPage({
-  searchParams,
-}: {
-  searchParams?: { year?: string; month?: string }
-}) {
-  const supabase = createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+export default async function BudgetPage() {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
 
   if (!user) {
     return (
-      <main className="flex-1 overflow-y-auto p-6 bg-neutral-50">
+      <main className="p-6">
         <div className="max-w-xl mx-auto bg-white rounded-xl shadow-card p-6">
-          <p className="mb-4 text-neutral-700">
-            Você precisa estar logado para ver as metas.
-          </p>
-          <Link
-            href={`/login?redirectTo=${encodeURIComponent('/budget')}`}
-            className="px-4 py-2 bg-primary-500 text-white rounded-lg hover:bg-primary-600"
-          >
-            Ir para login
-          </Link>
+          <p className="mb-4">Faça login para gerenciar orçamentos.</p>
         </div>
       </main>
-    )
+    );
   }
 
-  const { y: yNow, m: mNow } = nowYM()
-  const y = Number.isFinite(Number(searchParams?.year))
-    ? Number(searchParams?.year)
-    : yNow
-  const m = Number.isFinite(Number(searchParams?.month))
-    ? Number(searchParams?.month)
-    : mNow
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = now.getMonth() + 1;
 
-  let lines: BudgetLine[] = []
-  try {
-    // Assinatura correta: (supabase, year, month)
-    const tmp = await getBudgetsWithSpend(supabase, y, m)
-    lines = (tmp ?? []) as BudgetLine[]
-  } catch (e) {
-    console.error('Erro ao carregar budgets:', e)
-    lines = []
-  }
+  // getBudgetsWithSpend espera (year, month)
+  const lines: BudgetLine[] = await getBudgetsWithSpend(year, month);
 
-  const prev = new Date(y, m - 2, 1)
-  const next = new Date(y, m, 1)
+  const { data: categories } = await supabase
+    .from("categories")
+    .select("id, name")
+    .eq("user_id", user.id)
+    .order("name");
 
   return (
-    <main className="flex-1 overflow-y-auto p-6 bg-neutral-50">
-      <div className="max-w-3xl mx-auto space-y-6">
-        {/* Header */}
-        <div className="flex items-center justify-between">
-          <div>
-            <h2 className="text-2xl font-bold text-neutral-800">
-              Orçamentos por categoria
-            </h2>
-            <p className="text-sm text-neutral-500">
-              {monthLabel(m)} de {y}
-            </p>
-          </div>
-          <div className="flex gap-2">
-            <Link
-              href={`/budget${qs(prev.getFullYear(), prev.getMonth() + 1)}`}
-              className="px-3 py-1.5 bg-white text-neutral-600 rounded-lg text-sm font-medium border border-neutral-200"
-            >
-              ← Anterior
-            </Link>
-            <Link
-              href={`/budget${qs(next.getFullYear(), next.getMonth() + 1)}`}
-              className="px-3 py-1.5 bg-white text-neutral-600 rounded-lg text-sm font-medium border border-neutral-200"
-            >
-              Próximo →
-            </Link>
-            <Link
-              href={`/budget/new${qs(y, m)}`}
-              className="px-3 py-1.5 bg-primary-500 text-white rounded-lg text-sm font-medium"
-            >
-              Nova meta
-            </Link>
-          </div>
-        </div>
+    <main className="p-6">
+      <div className="max-w-3xl mx-auto bg-white rounded-xl shadow-card p-6 space-y-6">
+        <h2 className="text-xl font-semibold">Orçamentos</h2>
 
-        {/* Lista */}
-        <div className="bg-white rounded-xl shadow-card divide-y divide-neutral-100">
-          {lines.length === 0 ? (
-            <div className="p-6 text-neutral-600">
-              Nenhuma meta cadastrada ainda.
-              <Link
-                href={`/budget/new${qs(y, m)}`}
-                className="ml-2 text-primary-600 hover:underline"
-              >
-                Criar primeira meta
-              </Link>
-            </div>
-          ) : (
-            lines.map((l) => (
-              <div
-                key={`${l.category}-${l.id ?? 'noid'}`}
-                className="p-5 flex items-center justify-between"
-              >
-                <div className="flex-1 pr-4">
-                  <div className="flex items-center gap-2">
-                    <span className="font-medium text-neutral-800">
-                      {l.category}
-                    </span>
-                    {l.over && (
-                      <span className="text-xs px-2 py-0.5 rounded-full bg-red-50 text-danger border border-red-100">
-                        Estourado
-                      </span>
-                    )}
-                  </div>
+        <BudgetForm
+          categories={categories ?? []}
+          onSaved={() => { /* opcional: ação pós-salvar */ }}
+        />
 
-                  {/* ✅ Passando todas as props que o BudgetBar exige */}
-                  <BudgetBar
-                    category={l.category}
-                    amount={l.amount}
-                    spent={l.spent}
-                    percent={l.percent}
-                    over={l.over}
-                  />
-
-                  <div className="text-sm text-neutral-500">
-                    Gasto{' '}
-                    <span className="text-neutral-800">{brl(l.spent)}</span>
-                    <span className="mx-1">•</span>
-                    Meta{' '}
-                    <span className="text-neutral-800">{brl(l.amount)}</span>
-                    {l.amount > 0 && (
-                      <>
-                        <span className="mx-1">•</span>
-                        Usado{' '}
-                        <span className={l.over ? 'text-danger' : 'text-neutral-800'}>
-                          {Math.min(999, Math.round(l.percent))}%
-                        </span>
-                      </>
-                    )}
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-3">
-                  {l.hasBudget ? (
-                    <>
-                      <Link
-                        href={`/budget/${l.id}/edit${qs(y, m)}`}
-                        className="text-sm text-primary-600 hover:underline"
-                      >
-                        Editar
-                      </Link>
-                      <BudgetRowActions id={String(l.id)} />
-                    </>
-                  ) : (
-                    <Link
-                      href={`/budget/new?category=${encodeURIComponent(
-                        l.category
-                      )}&year=${y}&month=${m}&amount=${l.spent || 0}`}
-                      className="text-sm text-primary-600 hover:underline"
-                    >
-                      Definir meta
-                    </Link>
-                  )}
-                </div>
-              </div>
-            ))
-          )}
+        <div className="overflow-x-auto">
+          <table className="min-w-[640px] w-full text-sm">
+            <thead>
+              <tr className="text-left border-b">
+                <th className="py-2">Categoria</th>
+                <th className="py-2">Planejado</th>
+                <th className="py-2">Gasto</th>
+                <th className="py-2">Diferença</th>
+              </tr>
+            </thead>
+            <tbody>
+              {lines.map((l) => (
+                <tr key={l.id} className="border-b">
+                  <td className="py-2">{l.category}</td>
+                  <td className="py-2">R$ {l.amount.toFixed(2)}</td>
+                  <td className="py-2">R$ {l.spent.toFixed(2)}</td>
+                  <td className={`py-2 ${l.over ? "text-rose-600" : "text-emerald-600"}`}>
+                    R$ {(l.amount - l.spent).toFixed(2)}
+                  </td>
+                </tr>
+              ))}
+              {lines.length === 0 && (
+                <tr>
+                  <td colSpan={4} className="py-4 text-center text-neutral-500">
+                    Nenhum orçamento cadastrado para o mês atual.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
         </div>
       </div>
     </main>
-  )
+  );
 }
 
