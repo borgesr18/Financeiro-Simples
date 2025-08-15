@@ -9,12 +9,10 @@ import { createBudget } from '../actions'
 export default async function BudgetNewPage({
   searchParams,
 }: {
-  searchParams?: { category?: string; year?: string; month?: string; amount?: string }
+  searchParams?: { category_id?: string; year?: string; month?: string; amount?: string }
 }) {
   const supabase = createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+  const { data: { user } } = await supabase.auth.getUser()
 
   if (!user) {
     return (
@@ -32,14 +30,21 @@ export default async function BudgetNewPage({
     )
   }
 
+  // Carrega categorias do usuário (dropdown)
+  const { data: categories = [] } = await supabase
+    .from('categories')
+    .select('id, name')
+    .order('name', { ascending: true })
+
   const now = new Date()
   const y = Number.isFinite(Number(searchParams?.year)) ? Number(searchParams?.year) : now.getFullYear()
   const m = Number.isFinite(Number(searchParams?.month)) ? Number(searchParams?.month) : now.getMonth() + 1
+  const defaultCatId = searchParams?.category_id ?? ''
 
-  // 🔧 Wrapper que retorna Promise<void>
+  // Wrapper server-only para compatibilidade com <form action>
   const doCreate = async (formData: FormData) => {
     'use server'
-    await createBudget(formData)
+    await createBudget(formData) // não retornar nada
   }
 
   return (
@@ -55,12 +60,17 @@ export default async function BudgetNewPage({
         <form action={doCreate} className="space-y-4">
           <div>
             <label className="block text-sm text-neutral-600 mb-1">Categoria</label>
-            <input
-              name="category"
-              defaultValue={searchParams?.category ?? ''}
+            <select
+              name="category_id"
+              defaultValue={defaultCatId}
               required
               className="w-full px-3 py-2 border border-neutral-200 rounded-lg bg-neutral-50 focus:outline-none focus:ring-2 focus:ring-primary-300"
-            />
+            >
+              <option value="" disabled>Selecione…</option>
+              {categories.map((c) => (
+                <option key={c.id} value={c.id}>{c.name}</option>
+              ))}
+            </select>
           </div>
 
           <div className="grid grid-cols-2 gap-3">
@@ -104,10 +114,7 @@ export default async function BudgetNewPage({
           </div>
 
           <div className="pt-2 flex gap-2">
-            <button
-              type="submit"
-              className="px-4 py-2 bg-primary-500 text-white rounded-lg hover:bg-primary-600"
-            >
+            <button type="submit" className="px-4 py-2 bg-primary-500 text-white rounded-lg hover:bg-primary-600">
               Salvar
             </button>
             <Link
