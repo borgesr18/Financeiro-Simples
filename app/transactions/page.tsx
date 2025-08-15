@@ -10,6 +10,17 @@ export const dynamic = 'force-dynamic'
 
 type TxType = 'income' | 'expense' | 'all'
 
+type TxRow = {
+  id: string
+  date: string
+  description: string
+  amount: number
+  type: 'income' | 'expense'
+  category_id?: string | null
+  categories?: { name: string } | null
+  created_at?: string
+}
+
 function monthRange(date = new Date()) {
   const start = new Date(date.getFullYear(), date.getMonth(), 1)
   const end = new Date(date.getFullYear(), date.getMonth() + 1, 0)
@@ -31,24 +42,48 @@ export default async function TransactionsPage({
   const { from, to } = monthRange()
   const supabase = createClient()
 
-  let query = supabase
-    .from('transactions')
-    .select('*', { count: 'exact' })
-    .gte('date', from)
-    .lte('date', to)
-    .order('date', { ascending: false })
-    .order('created_at', { ascending: false })
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
 
-  if (type !== 'all') {
-    query = query.eq('type', type)
+  if (!user) {
+    return (
+      <main className="flex-1 overflow-y-auto p-6 bg-neutral-50">
+        <div className="max-w-xl mx-auto bg-white rounded-xl shadow-card p-6">
+          <p className="text-neutral-700 mb-4">Você precisa estar logado para ver seus lançamentos.</p>
+          <Link
+            href={`/login?redirectTo=${encodeURIComponent('/transactions')}`}
+            className="px-4 py-2 bg-primary-500 text-white rounded-lg hover:bg-primary-600"
+          >
+            Ir para login
+          </Link>
+        </div>
+      </main>
+    )
   }
 
-  const { data, count, error } = await query.range(fromIdx, toIdx)
+  // Base query com join em categories(name)
+  let base = supabase
+    .from('transactions')
+    .select('id, date, description, amount, type, category_id, categories(name), created_at', { count: 'exact' })
+    .eq('user_id', user.id)
+    .gte('date', from)
+    .lte('date', to)
+
+  if (type !== 'all') {
+    base = base.eq('type', type)
+  }
+
+  const { data, count, error } = await base
+    .order('date', { ascending: false })
+    .order('created_at', { ascending: false })
+    .range(fromIdx, toIdx)
 
   if (error) {
     console.error('[transactions] fetch error:', error)
   }
 
+  const rows: TxRow[] = Array.isArray(data) ? (data as TxRow[]) : []
   const total = count ?? 0
   const pages = Math.max(1, Math.ceil(total / pageSize))
 
@@ -91,26 +126,30 @@ export default async function TransactionsPage({
             </tr>
           </thead>
           <tbody>
-            {data?.map((t: any) => (
-              <tr key={t.id} className="border-t border-neutral-100 hover:bg-neutral-50">
-                <td className="px-4 py-3">
-                  {new Date(t.date).toLocaleDateString('pt-BR')}
-                </td>
-                <td className="px-4 py-3">{t.description}</td>
-                <td className="px-4 py-3">{t.category ?? '—'}</td>
-                <td
-                  className={`px-4 py-3 text-right font-medium ${
-                    Number(t.amount) < 0 ? 'text-danger' : 'text-success'
-                  }`}
-                >
-                  {brl(Number(t.amount))}
-                </td>
-                <td className="px-4 py-3">
-                  <TransactionRowActions id={t.id} />
-                </td>
-              </tr>
-            ))}
-            {!data?.length && (
+            {rows.map((t) => {
+              const amount = Number(t.amount)
+              const isNegative = amount < 0 || t.type === 'expense'
+              return (
+                <tr key={t.id} className="border-t border-neutral-100 hover:bg-neutral-50">
+                  <td className="px-4 py-3">
+                    {new Date(t.date).toLocaleDateString('pt-BR')}
+                  </td>
+                  <td className="px-4 py-3">{t.description}</td>
+                  <td className="px-4 py-3">{t.categories?.name ?? '—'}</td>
+                  <td
+                    className={`px-4 py-3 text-right font-medium ${
+                      isNegative ? 'text-danger' : 'text-success'
+                    }`}
+                  >
+                    {brl(amount)}
+                  </td>
+                  <td className="px-4 py-3 text-right">
+                    <TransactionRowActions id={t.id} />
+                  </td>
+                </tr>
+              )
+            })}
+            {!rows.length && (
               <tr>
                 <td colSpan={5} className="px-4 py-8 text-center text-neutral-500">
                   Nenhum lançamento no período.
@@ -155,4 +194,5 @@ export default async function TransactionsPage({
     </main>
   )
 }
+
 
