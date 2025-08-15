@@ -1,4 +1,4 @@
-// app/budgets/new/page.tsx
+// app/budget/new/page.tsx
 import { createClient } from '@/lib/supabase/server'
 import Link from 'next/link'
 import BudgetForm from '@/components/BudgetForm'
@@ -15,7 +15,7 @@ export default async function NewBudgetPage() {
         <div className="max-w-xl mx-auto bg-white rounded-xl shadow-card p-6">
           <p className="mb-4 text-neutral-700">Você precisa estar logado para criar uma meta.</p>
           <Link
-            href={`/login?redirectTo=${encodeURIComponent('/budgets/new')}`}
+            href={`/login?redirectTo=${encodeURIComponent('/budget/new')}`}  // <-- corrigido
             className="px-4 py-2 bg-primary-500 text-white rounded-lg hover:bg-primary-600"
           >
             Ir para login
