@@ -1,90 +1,91 @@
 // lib/budgets.ts
-import { SupabaseClient } from '@supabase/supabase-js'
+import type { SupabaseClient } from '@supabase/supabase-js'
 
-export type BudgetLine = {
-  id?: string            // id da meta (existe só quando há meta definida)
+export type BudgetWithSpend = {
+  id?: string
   category: string
-  amount: number         // meta
-  spent: number          // gasto (apenas saídas) no mês
-  percent: number        // spent / amount * 100 (ou 0 se amount=0)
-  over: boolean          // estourou?
-  hasBudget: boolean     // true quando a meta existe
-}
-
-function monthRange(y: number, m: number) {
-  const start = new Date(y, m - 1, 1)
-  const end = new Date(y, m, 0)
-  const iso = (d: Date) => d.toISOString().slice(0, 10)
-  return { from: iso(start), to: iso(end) }
+  amount: number
+  spent: number
+  percent: number
+  over: boolean
+  hasBudget: boolean
 }
 
 export async function getBudgetsWithSpend(
   supabase: SupabaseClient,
-  y: number,
-  m: number
-): Promise<BudgetLine[]> {
-  const { from, to } = monthRange(y, m)
+  year: number,
+  month: number
+): Promise<BudgetWithSpend[]> {
+  try {
+    // 1) busca budgets do mês
+    const { data: budgets, error: e1 } = await supabase
+      .from('budgets')
+      .select('id, category, amount')
+      .eq('year', year)
+      .eq('month', month)
 
-  // metas do mês (traz id)
-  const { data: budgets, error: bErr } = await supabase
-    .from('budgets')
-    .select('id, category, amount')
-    .eq('year', y)
-    .eq('month', m)
-    .order('category', { ascending: true })
-  if (bErr) throw bErr
+    if (e1) {
+      console.error('getBudgetsWithSpend: budgets error', e1)
+      return []
+    }
 
-  // gastos do mês (somente despesas)
-  const { data: tx, error: tErr } = await supabase
-    .from('transactions')
-    .select('category, amount')
-    .gte('date', from)
-    .lte('date', to)
-    .lt('amount', 0)
-  if (tErr) throw tErr
+    // 2) soma gastos por categoria no mês (só expenses)
+    const start = new Date(year, month - 1, 1).toISOString()
+    const end = new Date(year, month, 0, 23, 59, 59, 999).toISOString()
 
-  const spentMap = new Map<string, number>()
-  for (const t of tx ?? []) {
-    const cat = t.category ?? 'Outros'
-    const v = Math.abs(Number(t.amount ?? 0))
-    spentMap.set(cat, (spentMap.get(cat) ?? 0) + v)
+    const { data: sums, error: e2 } = await supabase
+      .from('transactions')
+      .select('category, amount, type')
+      .gte('date', start)
+      .lte('date', end)
+
+    if (e2) {
+      console.error('getBudgetsWithSpend: sums error', e2)
+      // Mesmo com erro, ainda devolvemos as metas com spent=0
+    }
+
+    const spentByCat = new Map<string, number>()
+    for (const t of sums ?? []) {
+      if (t?.type === 'expense' && typeof t.amount === 'number') {
+        const key = String(t.category ?? 'Outros')
+        spentByCat.set(key, (spentByCat.get(key) ?? 0) + Math.abs(t.amount))
+      }
+    }
+
+    const lines: BudgetWithSpend[] = []
+    // metas existentes
+    for (const b of budgets ?? []) {
+      const spent = spentByCat.get(b.category) ?? 0
+      const amount = Number(b.amount) || 0
+      const percent = amount > 0 ? (spent / amount) * 100 : 0
+      lines.push({
+        id: b.id,
+        category: b.category,
+        amount,
+        spent,
+        percent,
+        over: amount > 0 && spent > amount,
+        hasBudget: true,
+      })
+      // remove da soma para sobrar só categorias sem meta
+      spentByCat.delete(b.category)
+    }
+
+    // categorias gastas sem meta
+    for (const [category, spent] of spentByCat.entries()) {
+      lines.push({
+        category,
+        amount: 0,
+        spent,
+        percent: 0,
+        over: false,
+        hasBudget: false,
+      })
+    }
+
+    return lines
+  } catch (err) {
+    console.error('getBudgetsWithSpend: unexpected error', err)
+    return []
   }
-
-  const lines: BudgetLine[] = []
-
-  // categorias com meta
-  for (const b of budgets ?? []) {
-    const cat = b.category
-    const limit = Number(b.amount ?? 0)
-    const spent = Number(spentMap.get(cat) ?? 0)
-    const percent = limit > 0 ? (spent / limit) * 100 : (spent > 0 ? 999 : 0)
-    lines.push({
-      id: b.id,
-      category: cat,
-      amount: limit,
-      spent,
-      percent,
-      over: spent > limit && limit > 0,
-      hasBudget: true,
-    })
-    spentMap.delete(cat)
-  }
-
-  // categorias com gasto e sem meta
-  for (const [cat, spent] of spentMap.entries()) {
-    lines.push({
-      id: undefined,
-      category: cat,
-      amount: 0,
-      spent: Number(spent),
-      percent: spent > 0 ? 999 : 0,
-      over: false,
-      hasBudget: false,
-    })
-  }
-
-  return lines.sort((a, b) => {
-    if (a.over !== b.over) return a.over ? -1 : 1
-    return b.percent - a.percent
-  })
 }
