@@ -16,21 +16,22 @@ export default function CategoryChart() {
         dataLabels: { enabled: false },
         showInLegend: false,
         borderWidth: 0,
+        innerSize: '60%',
       },
     },
-    series: [{
-      name: 'Categorias',
-      type: 'pie',
-      colorByPoint: true,
-      innerSize: '60%',
-      data: [
-        { name: 'Moradia',     y: 40, color: '#38bdf8' },
-        { name: 'Alimentação', y: 20, color: '#e879f9' },
-        { name: 'Transporte',  y: 15, color: '#10b981' },
-        { name: 'Compras',     y: 15, color: '#f59e0b' },
-        { name: 'Lazer',       y: 10, color: '#ef4444' },
-      ],
-    }],
+    series: [
+      {
+        name: 'Categorias',
+        type: 'pie',
+        data: [
+          { name: 'Moradia',     y: 40, color: '#38bdf8' },
+          { name: 'Alimentação', y: 20, color: '#e879f9' },
+          { name: 'Transporte',  y: 15, color: '#10b981' },
+          { name: 'Compras',     y: 15, color: '#f59e0b' },
+          { name: 'Lazer',       y: 10, color: '#ef4444' },
+        ],
+      },
+    ],
   }
 
   return <HighchartsReact highcharts={Highcharts} options={options} />
