@@ -11,6 +11,21 @@ export type BudgetLine = {
   hasBudget: boolean
 }
 
+// Tipos para lidar com o relacionamento que pode vir como objeto OU array
+type RelCat = { id: string; name: string } | { id: string; name: string }[] | null | undefined
+type BudgetRow = {
+  id: string
+  planned_amount: number
+  category_id?: string | null
+  categories?: RelCat
+}
+
+// helper: devolve {id,name} mesmo se vier como array
+function pickCat(rel: RelCat): { id?: string; name?: string } {
+  if (!rel) return {}
+  return Array.isArray(rel) ? (rel[0] ?? {}) : rel
+}
+
 export async function getBudgets(year: number, month: number): Promise<BudgetLine[]> {
   const supabase = createClient()
   const { data: { user } } = await supabase.auth.getUser()
@@ -20,15 +35,17 @@ export async function getBudgets(year: number, month: number): Promise<BudgetLin
   const endDate = new Date(year, month, 0) // último dia do mês
   const end = endDate.toISOString().slice(0, 10)
 
-  // buscar orçamentos do mês
-  const { data: budgets } = await supabase
+  // Orçamentos do mês (inclui relação com categorias)
+  const { data: budgetsRaw } = await supabase
     .from('budgets')
-    .select('id, planned_amount, category_id, categories:category_id(name)')
+    .select('id, planned_amount, category_id, categories:category_id(id, name)')
     .eq('year', year)
     .eq('month', month)
     .eq('user_id', user.id)
 
-  // buscar transações do mês
+  const budgets = (budgetsRaw ?? []) as BudgetRow[]
+
+  // Transações do mês (para somar gastos por categoria)
   const { data: txs } = await supabase
     .from('transactions')
     .select('category_id, amount, type')
@@ -41,19 +58,23 @@ export async function getBudgets(year: number, month: number): Promise<BudgetLin
     if (t?.type === 'expense' && typeof t.amount === 'number' && t.category_id) {
       spentByCat.set(
         t.category_id,
-        (spentByCat.get(t.category_id) ?? 0) + Math.abs(t.amount)
+        (spentByCat.get(t.category_id) ?? 0) + Math.abs(Number(t.amount))
       )
     }
   }
 
   const lines: BudgetLine[] = []
 
-  for (const b of budgets ?? []) {
-    const spent = spentByCat.get(b.category_id ?? '') ?? 0
+  // Linhas com orçamento
+  for (const b of budgets) {
+    const cat = pickCat(b.categories)
+    const catId = (b.category_id ?? cat.id ?? '') as string
+    const spent = spentByCat.get(catId) ?? 0
     const amount = Number(b.planned_amount) || 0
+
     lines.push({
       id: b.id,
-      category: b.categories?.name ?? '—',
+      category: cat.name ?? '—',
       amount,
       spent,
       percent: amount > 0 ? (spent / amount) * 100 : 0,
@@ -62,9 +83,12 @@ export async function getBudgets(year: number, month: number): Promise<BudgetLin
     })
   }
 
-  // categorias que tiveram gasto mas não têm orçamento
+  // Categorias que gastaram mas não têm orçamento
   for (const [catId, spent] of spentByCat) {
-    const already = (budgets ?? []).some(b => b.category_id === catId)
+    const already = budgets.some((b) => {
+      const cat = pickCat(b.categories)
+      return (b.category_id ?? cat.id) === catId
+    })
     if (!already) {
       lines.push({
         id: `tx-${catId}`,
@@ -82,5 +106,5 @@ export async function getBudgets(year: number, month: number): Promise<BudgetLin
 }
 
 // Compatibilidade com páginas que importam o nome antigo
-export { getBudgets as getBudgetsWithSpend };
+export { getBudgets as getBudgetsWithSpend }
 
