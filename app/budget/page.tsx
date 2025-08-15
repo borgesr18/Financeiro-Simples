@@ -8,6 +8,17 @@ import Link from 'next/link'
 
 export const dynamic = 'force-dynamic'
 
+// Tipo mínimo usado pela UI (alinhe com o retorno real de getBudgetsWithSpend)
+type BudgetLine = {
+  id?: string
+  category: string
+  amount: number
+  spent: number
+  percent: number
+  over: boolean
+  hasBudget: boolean
+}
+
 function nowYM() {
   const d = new Date()
   return { y: d.getFullYear(), m: d.getMonth() + 1 }
@@ -22,16 +33,20 @@ function qs(y: number, m: number) {
 export default async function BudgetPage({
   searchParams,
 }: {
-  searchParams: { year?: string; month?: string }
+  searchParams?: { year?: string; month?: string }
 }) {
   const supabase = createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
 
   if (!user) {
     return (
       <main className="flex-1 overflow-y-auto p-6 bg-neutral-50">
         <div className="max-w-xl mx-auto bg-white rounded-xl shadow-card p-6">
-          <p className="mb-4 text-neutral-700">Você precisa estar logado para ver as metas.</p>
+          <p className="mb-4 text-neutral-700">
+            Você precisa estar logado para ver as metas.
+          </p>
           <Link
             href={`/login?redirectTo=${encodeURIComponent('/budget')}`}
             className="px-4 py-2 bg-primary-500 text-white rounded-lg hover:bg-primary-600"
@@ -44,14 +59,23 @@ export default async function BudgetPage({
   }
 
   const { y: yNow, m: mNow } = nowYM()
-  const y = Number(searchParams?.year ?? yNow)
-  const m = Number(searchParams?.month ?? mNow)
+  const y = Number.isFinite(Number(searchParams?.year))
+    ? Number(searchParams?.year)
+    : yNow
+  const m = Number.isFinite(Number(searchParams?.month))
+    ? Number(searchParams?.month)
+    : mNow
 
-  let lines = []
+  let lines: BudgetLine[] = []
   try {
-    lines = await getBudgetsWithSpend(supabase, user.id, y, m)
+    // Se seu helper já tipa o retorno, você pode usar:
+    // let tmp = await getBudgetsWithSpend(supabase, user.id, y, m);
+    // lines = tmp as BudgetLine[];
+    const tmp = await getBudgetsWithSpend(supabase, user.id, y, m)
+    lines = (tmp ?? []) as BudgetLine[]
   } catch (e) {
     console.error('Erro ao carregar budgets:', e)
+    lines = []
   }
 
   const prev = new Date(y, m - 2, 1)
@@ -63,7 +87,9 @@ export default async function BudgetPage({
         {/* Header */}
         <div className="flex items-center justify-between">
           <div>
-            <h2 className="text-2xl font-bold text-neutral-800">Orçamentos por categoria</h2>
+            <h2 className="text-2xl font-bold text-neutral-800">
+              Orçamentos por categoria
+            </h2>
             <p className="text-sm text-neutral-500">
               {monthLabel(m)} de {y}
             </p>
@@ -95,16 +121,24 @@ export default async function BudgetPage({
           {lines.length === 0 ? (
             <div className="p-6 text-neutral-600">
               Nenhuma meta cadastrada ainda.
-              <Link href={`/budget/new${qs(y, m)}`} className="ml-2 text-primary-600 hover:underline">
+              <Link
+                href={`/budget/new${qs(y, m)}`}
+                className="ml-2 text-primary-600 hover:underline"
+              >
                 Criar primeira meta
               </Link>
             </div>
           ) : (
             lines.map((l) => (
-              <div key={`${l.category}-${l.id ?? 'noid'}`} className="p-5 flex items-center justify-between">
+              <div
+                key={`${l.category}-${l.id ?? 'noid'}`}
+                className="p-5 flex items-center justify-between"
+              >
                 <div className="flex-1 pr-4">
                   <div className="flex items-center gap-2">
-                    <span className="font-medium text-neutral-800">{l.category}</span>
+                    <span className="font-medium text-neutral-800">
+                      {l.category}
+                    </span>
                     {l.over && (
                       <span className="text-xs px-2 py-0.5 rounded-full bg-red-50 text-danger border border-red-100">
                         Estourado
@@ -113,13 +147,16 @@ export default async function BudgetPage({
                   </div>
                   <BudgetBar spent={l.spent} amount={l.amount} />
                   <div className="text-sm text-neutral-500">
-                    Gasto: <span className="text-neutral-800">{brl(l.spent)}</span>
+                    Gasto:{' '}
+                    <span className="text-neutral-800">{brl(l.spent)}</span>
                     <span className="mx-1">•</span>
-                    Meta: <span className="text-neutral-800">{brl(l.amount)}</span>
+                    Meta:{' '}
+                    <span className="text-neutral-800">{brl(l.amount)}</span>
                     {l.amount > 0 && (
                       <>
                         <span className="mx-1">•</span>
-                        Usado: <span className={l.over ? 'text-danger' : 'text-neutral-800'}>
+                        Usado:{' '}
+                        <span className={l.over ? 'text-danger' : 'text-neutral-800'}>
                           {Math.min(999, Math.round(l.percent))}%
                         </span>
                       </>
@@ -130,7 +167,6 @@ export default async function BudgetPage({
                 <div className="flex items-center gap-3">
                   {l.hasBudget ? (
                     <>
-                      {/* Editar (rota opcional abaixo) */}
                       <Link
                         href={`/budget/${l.id}/edit${qs(y, m)}`}
                         className="text-sm text-primary-600 hover:underline"
@@ -141,7 +177,9 @@ export default async function BudgetPage({
                     </>
                   ) : (
                     <Link
-                      href={`/budget/new?category=${encodeURIComponent(l.category)}&year=${y}&month=${m}&amount=${l.spent || 0}`}
+                      href={`/budget/new?category=${encodeURIComponent(
+                        l.category
+                      )}&year=${y}&month=${m}&amount=${l.spent || 0}`}
                       className="text-sm text-primary-600 hover:underline"
                     >
                       Definir meta
@@ -156,3 +194,4 @@ export default async function BudgetPage({
     </main>
   )
 }
+
