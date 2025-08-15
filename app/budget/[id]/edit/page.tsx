@@ -35,7 +35,7 @@ export default async function BudgetEditPage({
     )
   }
 
-  // carrega a meta garantindo ownership pela RLS (e reforçando no filtro)
+  // carrega a meta garantindo ownership
   const { data: budget, error } = await supabase
     .from('budgets')
     .select('id, category, year, month, amount')
@@ -48,9 +48,19 @@ export default async function BudgetEditPage({
   }
   if (!budget) notFound()
 
-  // fallback para redirect pós-submit
   const y = Number.isFinite(Number(searchParams?.year)) ? Number(searchParams?.year) : budget.year
   const m = Number.isFinite(Number(searchParams?.month)) ? Number(searchParams?.month) : budget.month
+
+  // 🔧 Wrappers server-only para cumprir o tipo do <form action>
+  const doUpdate = async (formData: FormData) => {
+    'use server'
+    await updateBudget(formData) // não retorna nada aqui
+  }
+
+  const doDelete = async (formData: FormData) => {
+    'use server'
+    await deleteBudget(formData) // não retorna nada aqui
+  }
 
   return (
     <main className="flex-1 p-6 bg-neutral-50">
@@ -62,7 +72,7 @@ export default async function BudgetEditPage({
           </Link>
         </div>
 
-        <form action={updateBudget} className="space-y-4">
+        <form action={doUpdate} className="space-y-4">
           <input type="hidden" name="id" defaultValue={budget.id} />
           <div className="grid grid-cols-2 gap-3">
             <div className="col-span-2">
@@ -128,21 +138,17 @@ export default async function BudgetEditPage({
         </form>
 
         <form
-          action={deleteBudget}
+          action={doDelete}
           className="pt-2"
           onSubmit={(e) => {
-            const ok = confirm('Tem certeza que deseja excluir esta meta?')
-            if (!ok) e.preventDefault()
+            // esse confirm roda no cliente; em produção funciona porque o form é client interativo
+            if (!confirm('Tem certeza que deseja excluir esta meta?')) e.preventDefault()
           }}
         >
           <input type="hidden" name="id" defaultValue={budget.id} />
-          {/* manda y/m para o redirect pós-exclusão */}
           <input type="hidden" name="year" defaultValue={y} />
           <input type="hidden" name="month" defaultValue={m} />
-          <button
-            type="submit"
-            className="text-red-600 text-sm hover:underline"
-          >
+          <button type="submit" className="text-red-600 text-sm hover:underline">
             Excluir meta
           </button>
         </form>
