@@ -19,10 +19,18 @@ export default function BudgetRowActions({ id }: { id: string }) {
   const [err, setErr] = useState<string | null>(null)
 
   const onDelete = useCallback(async () => {
-    if (!confirm('Excluir esta meta? Essa ação não pode ser desfeita.')) return
-    setLoading(true); setErr(null)
+    setErr(null)
+    setLoading(true)
     try {
-      const { error } = await supabase.from('budgets').delete().eq('id', id)
+      const { data: { user }, error: uerr } = await supabase.auth.getUser()
+      if (uerr || !user) throw new Error('Sessão expirada. Faça login novamente.')
+
+      const { error } = await supabase
+        .from('budgets')
+        .delete()
+        .eq('id', id)
+        .eq('user_id', user.id)
+
       if (error) throw error
       router.refresh()
     } catch (e: any) {
@@ -30,12 +38,12 @@ export default function BudgetRowActions({ id }: { id: string }) {
     } finally {
       setLoading(false)
     }
-  }, [id, supabase, router])
+  }, [id, router, supabase])
 
   return (
-    <div className="flex items-center gap-2 justify-end">
+    <div className="flex items-center gap-3">
       <Link
-        href={`/budgets/${id}/edit${y && m ? `?year=${y}&month=${m}` : ''}`}
+        href={`/budget/${id}/edit${y && m ? `?year=${y}&month=${m}` : ''}`} // <-- corrigido
         className="text-sm text-primary-600 hover:underline"
       >
         Editar
@@ -51,3 +59,4 @@ export default function BudgetRowActions({ id }: { id: string }) {
     </div>
   )
 }
+
