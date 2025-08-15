@@ -11,25 +11,24 @@ export default function GlobalError({
   reset: () => void
 }) {
   useEffect(() => {
-    console.error('GlobalError:', { message: error.message, digest: error.digest, stack: error.stack })
+    // Isso aparece no console do servidor (Functions logs na Vercel)
+    console.error('[GlobalError]', error)
   }, [error])
 
   return (
     <html>
-      <body className="min-h-screen bg-neutral-50 flex items-center justify-center p-6">
-        <div className="max-w-lg w-full bg-white border border-neutral-200 rounded-xl p-6 shadow-card">
-          <h2 className="text-lg font-semibold text-neutral-800 mb-2">Algo deu errado</h2>
-          <p className="text-sm text-neutral-600 mb-3">
-            Tente novamente. Se o problema persistir, me envie o <strong>digest</strong> abaixo.
+      <body className="p-6 bg-neutral-50">
+        <div className="max-w-xl mx-auto bg-white rounded-xl shadow-card p-6">
+          <h2 className="text-lg font-semibold mb-2">Ops! Ocorreu um erro.</h2>
+          <p className="text-sm text-neutral-600 mb-4">
+            Código de diagnóstico:{' '}
+            <code className="px-2 py-1 bg-neutral-100 rounded">
+              {error.digest ?? '—'}
+            </code>
           </p>
-          {error.digest && (
-            <div className="text-xs font-mono bg-neutral-50 border border-neutral-200 rounded p-3 mb-3 break-all">
-              digest: {error.digest}
-            </div>
-          )}
           <button
             onClick={() => reset()}
-            className="px-3 py-2 bg-primary-500 text-white rounded-lg hover:bg-primary-600"
+            className="px-3 py-2 bg-primary-500 text-white rounded hover:bg-primary-600"
           >
             Tentar novamente
           </button>
@@ -38,3 +37,4 @@ export default function GlobalError({
     </html>
   )
 }
+
