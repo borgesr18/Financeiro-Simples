@@ -15,9 +15,7 @@ export default async function BudgetEditPage({
   searchParams?: { year?: string; month?: string }
 }) {
   const supabase = createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+  const { data: { user } } = await supabase.auth.getUser()
 
   if (!user) {
     return (
@@ -35,31 +33,34 @@ export default async function BudgetEditPage({
     )
   }
 
-  // carrega a meta garantindo ownership
-  const { data: budget, error } = await supabase
+  // Carrega a meta garantindo ownership
+  const { data: budget } = await supabase
     .from('budgets')
-    .select('id, category, year, month, amount')
+    .select('id, category_id, category, year, month, amount')
     .eq('id', params.id)
     .eq('user_id', user.id)
     .single()
 
-  if (error) {
-    console.error('edit load error:', error)
-  }
   if (!budget) notFound()
+
+  // Carrega categorias para o dropdown
+  const { data: categories = [] } = await supabase
+    .from('categories')
+    .select('id, name')
+    .order('name', { ascending: true })
 
   const y = Number.isFinite(Number(searchParams?.year)) ? Number(searchParams?.year) : budget.year
   const m = Number.isFinite(Number(searchParams?.month)) ? Number(searchParams?.month) : budget.month
 
-  // 🔧 Wrappers server-only para cumprir o tipo do <form action>
+  // Wrappers server-only compatíveis com <form action>
   const doUpdate = async (formData: FormData) => {
     'use server'
-    await updateBudget(formData) // não retorna nada aqui
+    await updateBudget(formData)
   }
 
   const doDelete = async (formData: FormData) => {
     'use server'
-    await deleteBudget(formData) // não retorna nada aqui
+    await deleteBudget(formData)
   }
 
   return (
@@ -74,17 +75,29 @@ export default async function BudgetEditPage({
 
         <form action={doUpdate} className="space-y-4">
           <input type="hidden" name="id" defaultValue={budget.id} />
-          <div className="grid grid-cols-2 gap-3">
-            <div className="col-span-2">
-              <label className="block text-sm text-neutral-600 mb-1">Categoria</label>
-              <input
-                name="category"
-                defaultValue={budget.category}
-                required
-                className="w-full px-3 py-2 border border-neutral-200 rounded-lg bg-neutral-50 focus:outline-none focus:ring-2 focus:ring-primary-300"
-              />
-            </div>
 
+          <div>
+            <label className="block text-sm text-neutral-600 mb-1">Categoria</label>
+            <select
+              name="category_id"
+              defaultValue={budget.category_id ?? ''}
+              required
+              className="w-full px-3 py-2 border border-neutral-200 rounded-lg bg-neutral-50 focus:outline-none focus:ring-2 focus:ring-primary-300"
+            >
+              <option value="" disabled>Selecione…</option>
+              {categories.map((c) => (
+                <option key={c.id} value={c.id}>{c.name}</option>
+              ))}
+            </select>
+            {/* Opcional: mostrar categoria legada em texto, se existir */}
+            {!budget.category_id && budget.category ? (
+              <p className="text-xs text-neutral-500 mt-1">
+                Categoria antiga: <span className="text-neutral-700">{budget.category}</span>
+              </p>
+            ) : null}
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block text-sm text-neutral-600 mb-1">Ano</label>
               <input
@@ -109,19 +122,19 @@ export default async function BudgetEditPage({
                 className="w-full px-3 py-2 border border-neutral-200 rounded-lg bg-neutral-50 focus:outline-none focus:ring-2 focus:ring-primary-300"
               />
             </div>
+          </div>
 
-            <div className="col-span-2">
-              <label className="block text-sm text-neutral-600 mb-1">Valor da meta</label>
-              <input
-                type="number"
-                name="amount"
-                min={0}
-                step="0.01"
-                defaultValue={budget.amount}
-                required
-                className="w-full px-3 py-2 border border-neutral-200 rounded-lg bg-neutral-50 focus:outline-none focus:ring-2 focus:ring-primary-300"
-              />
-            </div>
+          <div>
+            <label className="block text-sm text-neutral-600 mb-1">Valor da meta</label>
+            <input
+              type="number"
+              name="amount"
+              min={0}
+              step="0.01"
+              defaultValue={budget.amount}
+              required
+              className="w-full px-3 py-2 border border-neutral-200 rounded-lg bg-neutral-50 focus:outline-none focus:ring-2 focus:ring-primary-300"
+            />
           </div>
 
           <div className="pt-2 flex gap-2">
@@ -137,14 +150,7 @@ export default async function BudgetEditPage({
           </div>
         </form>
 
-        <form
-          action={doDelete}
-          className="pt-2"
-          onSubmit={(e) => {
-            // esse confirm roda no cliente; em produção funciona porque o form é client interativo
-            if (!confirm('Tem certeza que deseja excluir esta meta?')) e.preventDefault()
-          }}
-        >
+        <form action={doDelete} className="pt-2">
           <input type="hidden" name="id" defaultValue={budget.id} />
           <input type="hidden" name="year" defaultValue={y} />
           <input type="hidden" name="month" defaultValue={m} />
