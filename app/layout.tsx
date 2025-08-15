@@ -1,7 +1,7 @@
 import './globals.css'
 import Link from 'next/link'
 import { Inter } from 'next/font/google'
-import { FaWallet, FaHouse, FaList, FaChartPie, FaBullseye, FaLandmark, FaCreditCard, FaChartLine, FaFileAlt, FaChartBar, FaBars, FaBell, FaQuestionCircle, FaPlus, FaSearch, FaCog } from 'react-icons/fa6'
+import { FaWallet, FaHouse, FaList, FaChartPie, FaBullseye, FaLandmark, FaCreditCard, FaChartLine, FaFileAlt, FaChartBar, FaBars, FaBell, FaQuestionCircle, FaPlus, FaSearch, FaCog } from 'react-icons/fa'
 
 const inter = Inter({ subsets: ['latin'], variable: '--font-inter' })
 
