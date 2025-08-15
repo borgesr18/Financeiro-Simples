@@ -18,6 +18,7 @@ import {
   FaSearch,
   FaCog,
   FaQuestionCircle,
+  FaFile, // <- substitui FaFileAlt
 } from 'react-icons/fa'
 import AuthMenu from '@/components/AuthMenu'
 
@@ -68,7 +69,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                   </li>
                   <li className="mb-1">
                     <Link
-                      href="/budget"  // <-- corrigido (antes /budgets)
+                      href="/budget"
                       className="flex items-center px-3 py-2 rounded-lg text-neutral-600 hover:bg-neutral-50 font-medium"
                     >
                       <FaChartPie className="w-5 mr-2" />
@@ -128,7 +129,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                       href="/reports"
                       className="flex items-center px-3 py-2 rounded-lg text-neutral-600 hover:bg-neutral-50 font-medium"
                     >
-                      <FaFileAlt className="w-5 mr-2" />
+                      <FaFile className="w-5 mr-2" />
                       Reports
                     </Link>
                   </li>
@@ -195,4 +196,3 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     </html>
   )
 }
-
