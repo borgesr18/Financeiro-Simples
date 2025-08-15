@@ -2,11 +2,13 @@
 import { SupabaseClient } from '@supabase/supabase-js'
 
 export type BudgetLine = {
+  id?: string            // id da meta (existe só quando há meta definida)
   category: string
-  amount: number       // meta
-  spent: number        // gasto (apenas saídas) no mês
-  percent: number      // spent / amount * 100 (ou 0 se amount=0)
-  over: boolean        // estourou?
+  amount: number         // meta
+  spent: number          // gasto (apenas saídas) no mês
+  percent: number        // spent / amount * 100 (ou 0 se amount=0)
+  over: boolean          // estourou?
+  hasBudget: boolean     // true quando a meta existe
 }
 
 function monthRange(y: number, m: number) {
@@ -23,27 +25,24 @@ export async function getBudgetsWithSpend(
 ): Promise<BudgetLine[]> {
   const { from, to } = monthRange(y, m)
 
-  // 1) metas do mês
+  // metas do mês (traz id)
   const { data: budgets, error: bErr } = await supabase
     .from('budgets')
-    .select('category, amount')
+    .select('id, category, amount')
     .eq('year', y)
     .eq('month', m)
     .order('category', { ascending: true })
-
   if (bErr) throw bErr
 
-  // 2) gastos do mês (apenas despesas)
+  // gastos do mês (somente despesas)
   const { data: tx, error: tErr } = await supabase
     .from('transactions')
     .select('category, amount')
     .gte('date', from)
     .lte('date', to)
-    .lt('amount', 0) // somente saídas
-
+    .lt('amount', 0)
   if (tErr) throw tErr
 
-  // soma por categoria (saídas em valor absoluto)
   const spentMap = new Map<string, number>()
   for (const t of tx ?? []) {
     const cat = t.category ?? 'Outros'
@@ -51,7 +50,6 @@ export async function getBudgetsWithSpend(
     spentMap.set(cat, (spentMap.get(cat) ?? 0) + v)
   }
 
-  // merge com metas (se houver gasto sem meta, podemos exibir também — opcional)
   const lines: BudgetLine[] = []
 
   // categorias com meta
@@ -61,27 +59,30 @@ export async function getBudgetsWithSpend(
     const spent = Number(spentMap.get(cat) ?? 0)
     const percent = limit > 0 ? (spent / limit) * 100 : (spent > 0 ? 999 : 0)
     lines.push({
+      id: b.id,
       category: cat,
       amount: limit,
       spent,
       percent,
-      over: spent > limit && limit > 0
+      over: spent > limit && limit > 0,
+      hasBudget: true,
     })
     spentMap.delete(cat)
   }
 
-  // (opcional) categorias com gasto e sem meta — mostramos para chamar atenção
+  // categorias com gasto e sem meta
   for (const [cat, spent] of spentMap.entries()) {
     lines.push({
+      id: undefined,
       category: cat,
       amount: 0,
       spent: Number(spent),
       percent: spent > 0 ? 999 : 0,
       over: false,
+      hasBudget: false,
     })
   }
 
-  // ordena: estourados primeiro, depois por maior % usado
   return lines.sort((a, b) => {
     if (a.over !== b.over) return a.over ? -1 : 1
     return b.percent - a.percent
