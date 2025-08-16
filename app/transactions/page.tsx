@@ -1,7 +1,7 @@
 // app/transactions/page.tsx
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
-import { brl } from '@/lib/format'
+import { formatBRL } from '@/lib/format'
 import TransactionsFilters from '@/components/TransactionsFilters'
 import TransactionRowActions from '@/components/TransactionRowActions'
 
