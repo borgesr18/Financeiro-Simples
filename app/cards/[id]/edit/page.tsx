@@ -41,7 +41,6 @@ export default async function EditCardPage({
     )
   }
 
-  // Carrega o cartão
   const { data, error } = await supabase
     .from('cards')
     .select('id, account_id, name, brand, last4, limit_amount, closing_day, due_day, institution, color_hex, icon_slug, archived')
@@ -54,7 +53,7 @@ export default async function EditCardPage({
   }
   const card = data as CardRow
 
-  // --- wrappers de server actions para injetar o id da rota ---
+  // wrappers — injeta o id da rota
   const doUpdate = async (fd: FormData) => {
     'use server'
     const { updateCard } = await import('../../actions')
@@ -67,7 +66,6 @@ export default async function EditCardPage({
     await archiveCard(params.id)
     redirect('/cards')
   }
-  // ------------------------------------------------------------
 
   return (
     <main className="p-6">
@@ -161,7 +159,6 @@ export default async function EditCardPage({
             </div>
           </div>
 
-          {/* Picker client-only para ícone/cor (escreve nos inputs hidden color_hex/icon_slug) */}
           <IconColorPicker
             defaultIconSlug={card.icon_slug ?? 'FaCreditCard'}
             defaultColorHex={card.color_hex ?? '#8b5cf6'}
