@@ -1,7 +1,7 @@
-// app/cards/actions.ts
 'use server'
 
 import { revalidatePath } from 'next/cache'
+import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { randomUUID } from 'crypto'
 
@@ -9,12 +9,16 @@ function toInt(v: FormDataEntryValue | null, fb = 1) {
   const n = Number(v)
   return Number.isFinite(n) ? Math.trunc(n) : fb
 }
+
 function toNum(v: FormDataEntryValue | null, fb = 0) {
   const n = Number(v)
   return Number.isFinite(n) ? n : fb
 }
 
+/** Cria cartão + conta (type=credit) e redireciona para /cards */
 export async function createCard(fd: FormData) {
+  'use server'
+
   const supabase = createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) throw new Error('Sem usuário')
@@ -66,9 +70,13 @@ export async function createCard(fd: FormData) {
   if (cardErr) throw cardErr
 
   revalidatePath('/cards')
+  redirect('/cards')
 }
 
+/** Atualiza cartão e espelha ícone/cor/nome na conta relacionada, depois redireciona */
 export async function updateCard(id: string, fd: FormData) {
+  'use server'
+
   const supabase = createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) throw new Error('Sem usuário')
@@ -94,45 +102,35 @@ export async function updateCard(id: string, fd: FormData) {
   const due_day = toInt(fd.get('due_day'), Math.min(28, closing_day + 7))
   const archived = (fd.get('archived') || '').toString() === 'on'
 
-  // atualiza card
   const { error: cardErr } = await supabase
     .from('cards')
     .update({
-      name,
-      brand,
-      last4,
-      institution,
-      color_hex,
-      icon_slug,
-      limit_amount,
-      closing_day,
-      due_day,
-      archived,
+      name, brand, last4, institution,
+      color_hex, icon_slug,
+      limit_amount, closing_day, due_day, archived,
     })
     .eq('user_id', user.id)
     .eq('id', id)
 
   if (cardErr) throw cardErr
 
-  // espelha na account
+  // espelha na account relacionada
   const { error: accErr } = await supabase
     .from('accounts')
-    .update({
-      name,
-      institution,
-      color_hex,
-      icon_slug,
-    })
+    .update({ name, institution, color_hex, icon_slug })
     .eq('id', card.account_id)
     .eq('user_id', user.id)
 
   if (accErr) throw accErr
 
   revalidatePath('/cards')
-  revalidatePath(`/cards/${id}/edit`)
+  redirect('/cards')
 }
 
+/** Arquiva cartão */
 export async function archiveCard(id: string) {
+  'use server'
+
   const supabase = createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) throw new Error('Sem usuário')
@@ -147,23 +145,29 @@ export async function archiveCard(id: string) {
   revalidatePath('/cards')
 }
 
+/** Calcula ciclo de fatura a partir do dia de fechamento */
 function computeCycle(closingDay: number, base = new Date()) {
-  // ciclo: (dia seguinte ao fechamento anterior) até (dia de fechamento atual)
   const y = base.getFullYear()
   const m = base.getMonth()
   const today = base.getDate()
 
+  // ciclo: (dia seguinte ao fechamento anterior) até (dia de fechamento atual)
   let end = new Date(y, m, closingDay)
   let start = new Date(y, m - 1, closingDay + 1)
+
   if (today <= closingDay) {
     end = new Date(y, m - 1, closingDay)
     start = new Date(y, m - 2, closingDay + 1)
   }
+
   const toISO = (d: Date) => d.toISOString().slice(0, 10)
   return { startISO: toISO(start), endISO: toISO(end) }
 }
 
+/** Gera/atualiza a fatura do ciclo atual do cartão */
 export async function generateStatement(cardId: string) {
+  'use server'
+
   const supabase = createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) throw new Error('Sem usuário')
@@ -232,12 +236,15 @@ export async function generateStatement(cardId: string) {
   revalidatePath(`/cards/${cardId}/statements`)
 }
 
+/** Paga a fatura (saída da conta pagadora e entrada na conta do cartão) */
 export async function payStatement(statementId: string, payFromAccountId: string) {
+  'use server'
+
   const supabase = createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) throw new Error('Sem usuário')
 
-  // pega a fatura (sem nested select para evitar tipagem array)
+  // pega a fatura
   const { data: st } = await supabase
     .from('card_statements')
     .select('id, card_id, amount_total, due_date')
@@ -250,7 +257,7 @@ export async function payStatement(statementId: string, payFromAccountId: string
   const amount = Number(st.amount_total) || 0
   if (amount <= 0) throw new Error('Valor da fatura inválido')
 
-  // busca a conta do cartão
+  // busca a conta do cartão (sem nested select p/ evitar tipagem de array)
   const { data: card } = await supabase
     .from('cards')
     .select('account_id')
@@ -297,4 +304,3 @@ export async function payStatement(statementId: string, payFromAccountId: string
   revalidatePath(`/cards/${st.card_id}/statements`)
   revalidatePath('/cards')
 }
-
