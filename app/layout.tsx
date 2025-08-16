@@ -34,9 +34,9 @@ export default function RootLayout({
   children: React.ReactNode
 }) {
   return (
-    <html lang="pt-BR" className={inter.variable}>
-      <body className="bg-neutral-50 text-neutral-800 font-sans">
-        <div className="flex h-screen overflow-hidden">
+    <html lang="pt-BR" className={`${inter.variable} h-full`}>
+      <body className="min-h-dvh min-h-screen bg-neutral-50 text-neutral-800 font-sans">
+        <div className="flex min-h-dvh min-h-screen">
           {/* Sidebar */}
           <aside className="hidden md:flex md:flex-col w-64 bg-white border-r border-neutral-200">
             {/* Logo */}
@@ -196,7 +196,7 @@ export default function RootLayout({
           </aside>
 
           {/* Conteúdo principal */}
-          <div className="flex-1 flex flex-col overflow-hidden">
+          <div className="flex-1 flex flex-col min-h-0">
             {/* Header */}
             <header className="bg-white border-b border-neutral-200 p-4 flex items-center justify-between">
               {/* Botão menu mobile */}
@@ -235,8 +235,10 @@ export default function RootLayout({
               </div>
             </header>
 
-            {/* Onde as páginas renderizam */}
-            {children}
+            {/* Área rolável das páginas */}
+            <div className="flex-1 min-h-0 overflow-y-auto">
+              {children}
+            </div>
           </div>
         </div>
       </body>
