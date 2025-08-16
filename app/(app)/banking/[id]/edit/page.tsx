@@ -5,13 +5,14 @@ import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { updateAccount } from '../../actions'
+import IconPicker from '@/components/IconPicker'
+import ColorField from '@/components/ColorField'
 
 export default async function EditAccountPage({ params }: { params: { id: string } }) {
   const supabase = createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) notFound()
 
-  // Carrega a conta
   const { data: acc } = await supabase
     .from('accounts')
     .select('id, name, type, institution, color_hex, icon_slug, currency, archived, created_at')
@@ -30,7 +31,6 @@ export default async function EditAccountPage({ params }: { params: { id: string
     )
   }
 
-  // (Opcional) Buscar saldo atual para exibir
   const { data: balRow } = await supabase
     .from('v_account_balances')
     .select('balance')
@@ -49,11 +49,14 @@ export default async function EditAccountPage({ params }: { params: { id: string
         </div>
 
         <p className="text-sm text-neutral-500">
-          Criada em {new Date(acc.created_at).toLocaleDateString()} · Saldo atual: <span className={balance < 0 ? 'text-rose-600' : 'text-emerald-600'}>R$ {balance.toFixed(2)}</span>
+          Criada em {new Date(acc.created_at).toLocaleDateString()} · Saldo atual:{' '}
+          <span className={balance < 0 ? 'text-rose-600' : 'text-emerald-600'}>
+            R$ {balance.toFixed(2)}
+          </span>
         </p>
 
         {/* Server Action: updateAccount */}
-        <form action={updateAccount} className="space-y-3">
+        <form action={updateAccount} className="space-y-4">
           <input type="hidden" name="id" value={acc.id} />
 
           <div>
@@ -91,25 +94,10 @@ export default async function EditAccountPage({ params }: { params: { id: string
             />
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-sm mb-1">Cor (hex, opcional)</label>
-              <input
-                name="color_hex"
-                defaultValue={acc.color_hex ?? ''}
-                className="w-full rounded border px-3 py-2"
-                placeholder="#22c55e"
-              />
-            </div>
-            <div>
-              <label className="block text-sm mb-1">Ícone (slug, opcional)</label>
-              <input
-                name="icon_slug"
-                defaultValue={acc.icon_slug ?? ''}
-                className="w-full rounded border px-3 py-2"
-                placeholder="wallet"
-              />
-            </div>
+          {/* Ícone e Cor com componentes "amigáveis" */}
+          <div className="grid grid-cols-2 gap-4">
+            <ColorField name="color_hex" value={acc.color_hex ?? '#22c55e'} label="Cor" />
+            <IconPicker name="icon_slug" value={acc.icon_slug ?? 'wallet'} label="Ícone" />
           </div>
 
           <div>
@@ -135,3 +123,4 @@ export default async function EditAccountPage({ params }: { params: { id: string
     </main>
   )
 }
+
