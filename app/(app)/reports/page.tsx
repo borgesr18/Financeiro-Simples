@@ -6,11 +6,15 @@ import { createClient } from '@/lib/supabase/server'
 import BudgetVsActualTable, { BudgetRow } from '@/components/reports/BudgetVsActualTable'
 import { formatBRL } from '@/lib/format'
 
+type CatObj = { name: string }
+
+// O Supabase pode retornar `categories` como objeto OU como array dependendo do relacionamento.
+// Aceitamos ambos e normalizamos adiante.
 type BudgetRowRaw = {
   id: string
   category_id: string | null
   amount: number
-  categories?: { name: string } | null
+  categories?: CatObj | CatObj[] | null
 }
 
 type TxRow = {
@@ -57,9 +61,10 @@ export default async function ReportsPage() {
     .eq('year', year)
     .eq('month', month)
 
+  // Tipamos de forma flexível; normalizamos mais abaixo
   const budgets = (budgetsData ?? []) as BudgetRowRaw[]
 
-  // 2) Transações do mês atual (vamos agregar em código)
+  // 2) Transações do mês atual (agregamos em código)
   const { data: txData } = await supabase
     .from('transactions')
     .select('id, date, amount, category_id, type')
@@ -70,7 +75,7 @@ export default async function ReportsPage() {
 
   const txs = (txData ?? []) as TxRow[]
 
-  // Mapa de gasto por categoria (somando despesas como positivos)
+  // Gasto por categoria (somando despesas como positivos)
   const spentByCat = new Map<string, number>()
   for (const t of txs) {
     if (t.amount < 0) {
@@ -80,22 +85,23 @@ export default async function ReportsPage() {
     }
   }
 
-  // Mapa do planejado por categoria
+  // Planejado por categoria + nome (normalizando categories como objeto)
   const plannedByCat = new Map<string, { amount: number; name: string }>()
   for (const b of budgets) {
     const cid = b.category_id ?? '__none__'
+    const cat = Array.isArray(b.categories) ? b.categories[0] : b.categories
+    const name = cat?.name ?? '—'
     const prev = plannedByCat.get(cid)?.amount ?? 0
-    const name = b.categories?.name ?? '—'
     plannedByCat.set(cid, { amount: prev + (Number(b.amount) || 0), name })
   }
 
-  // Conjunto de todas as categorias presentes (planejado ou gasto)
+  // Todas as categorias presentes (planejado ou gasto)
   const allCatIds = new Set<string>([
     ...Array.from(plannedByCat.keys()),
     ...Array.from(spentByCat.keys()),
   ])
 
-  // Constrói linhas para a tabela
+  // Linhas para a tabela
   const bvaRows: BudgetRow[] = Array.from(allCatIds).map((cid) => {
     const planned = plannedByCat.get(cid)?.amount ?? 0
     const name = plannedByCat.get(cid)?.name ?? '—'
@@ -160,5 +166,3 @@ export default async function ReportsPage() {
     </main>
   )
 }
-
-
