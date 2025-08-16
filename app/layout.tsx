@@ -17,8 +17,8 @@ import {
   FaBars,
   FaBell,
   FaPlus,
-  FaMagnifyingGlass, // <— substitui o antigo FaSearch
-  FaGear,            // <— substitui o antigo FaCog
+  FaMagnifyingGlass,
+  FaGear,
 } from 'react-icons/fa6'
 
 const inter = Inter({ subsets: ['latin'], variable: '--font-inter' })
@@ -28,15 +28,13 @@ export const metadata: Metadata = {
   description: 'Controle financeiro simples com Next.js + Supabase',
 }
 
-export default function RootLayout({
-  children,
-}: {
-  children: React.ReactNode
-}) {
+export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="pt-BR" className={`${inter.variable} h-full`}>
-      <body className="min-h-dvh min-h-screen bg-neutral-50 text-neutral-800 font-sans">
-        <div className="flex min-h-dvh min-h-screen">
+    <html lang="pt-BR" className={`${inter.variable}`}>
+      {/* body ocupa 100% da viewport e TRAVA o scroll global */}
+      <body className="h-dvh h-screen overflow-hidden bg-neutral-50 text-neutral-800 font-sans">
+        {/* wrapper com altura fixa da viewport */}
+        <div className="flex h-dvh h-screen">
           {/* Sidebar */}
           <aside className="hidden md:flex md:flex-col w-64 bg-white border-r border-neutral-200">
             {/* Logo */}
@@ -47,7 +45,7 @@ export default function RootLayout({
               <h1 className="text-xl font-semibold text-neutral-800">FinTrack</h1>
             </div>
 
-            {/* Navegação */}
+            {/* Navegação — a própria sidebar rola se precisar */}
             <nav className="flex-1 overflow-y-auto p-3">
               {/* Principal */}
               <div className="mb-6">
@@ -75,7 +73,7 @@ export default function RootLayout({
                   </li>
                   <li className="mb-1">
                     <Link
-                      href="/budget" // caminho atual dos orçamentos
+                      href="/budget"
                       className="flex items-center px-3 py-2 rounded-lg text-neutral-600 hover:bg-neutral-50 font-medium"
                     >
                       <FaChartPie className="w-5 mr-2" />
@@ -195,11 +193,10 @@ export default function RootLayout({
             </div>
           </aside>
 
-          {/* Conteúdo principal */}
+          {/* Conteúdo principal (coluna) */}
           <div className="flex-1 flex flex-col min-h-0">
-            {/* Header */}
+            {/* Header fixo dentro do layout */}
             <header className="bg-white border-b border-neutral-200 p-4 flex items-center justify-between">
-              {/* Botão menu mobile */}
               <button className="md:hidden text-neutral-500 hover:text-neutral-700">
                 <FaBars className="text-xl" />
               </button>
@@ -220,7 +217,6 @@ export default function RootLayout({
                 </div>
               </div>
 
-              {/* Ações à direita */}
               <div className="flex items-center space-x-3">
                 <button className="p-2 text-neutral-500 hover:text-neutral-700 hover:bg-neutral-50 rounded-full">
                   <FaBell />
@@ -235,7 +231,7 @@ export default function RootLayout({
               </div>
             </header>
 
-            {/* Área rolável das páginas */}
+            {/* 🔥 ÚNICA área rolável do app */}
             <div className="flex-1 min-h-0 overflow-y-auto">
               {children}
             </div>
@@ -245,4 +241,3 @@ export default function RootLayout({
     </html>
   )
 }
-
