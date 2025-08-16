@@ -1,136 +1,83 @@
+// app/budget/actions.ts
 'use server'
 
-import { z } from 'zod'
 import { revalidatePath } from 'next/cache'
-import { redirect } from 'next/navigation'
-import { createClient } from '@/lib/supabase/server'
+import { createActionClient } from '@/lib/supabase/actions'
 
-const budgetSchema = z.object({
-  id: z.string().uuid().optional(),
-  category: z.string().min(1, 'Informe a categoria'),
-  year: z.coerce.number().int().min(2000).max(2100),
-  month: z.coerce.number().int().min(1).max(12),
-  amount: z.coerce.number().min(0, 'Valor não pode ser negativo'),
-})
-
-/** helper para montar o redirect de volta para a lista no mês/ano escolhido */
-function toList(year: number, month: number) {
-  return `/budget?year=${year}&month=${month}`
-}
-
-export async function createBudget(formData: FormData) {
-  const supabase = createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-
-  if (!user) {
-    redirect(`/login?redirectTo=${encodeURIComponent('/budget/new')}`)
-  }
-
-  const data = {
-    category: formData.get('category'),
-    year: formData.get('year'),
-    month: formData.get('month'),
-    amount: formData.get('amount'),
-  }
-
-  const parsed = budgetSchema.safeParse(data)
-  if (!parsed.success) {
-    const err = parsed.error.flatten().fieldErrors
-    return { error: 'Dados inválidos', details: err }
-  }
-
-  const payload = parsed.data
-
-  // tenta inserir com user_id explícito; se você criou o trigger que preenche user_id,
-  // isso vai só redundar (sem problema).
-  const { error } = await supabase.from('budgets').insert({
-    user_id: user.id,
-    category: payload.category,
-    year: payload.year,
-    month: payload.month,
-    amount: payload.amount,
-  })
-
-  if (error) {
-    console.error('createBudget error:', error)
-    return { error: 'Falha ao criar orçamento.' }
-  }
-
-  revalidatePath('/budget')
-  redirect(toList(payload.year, payload.month))
-}
-
-export async function updateBudget(formData: FormData) {
-  const supabase = createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-
-  if (!user) {
-    redirect(`/login?redirectTo=${encodeURIComponent('/budget')}`)
-  }
-
-  const data = {
-    id: formData.get('id'),
-    category: formData.get('category'),
-    year: formData.get('year'),
-    month: formData.get('month'),
-    amount: formData.get('amount'),
-  }
-
-  const parsed = budgetSchema.extend({ id: z.string().uuid() }).safeParse(data)
-  if (!parsed.success) {
-    const err = parsed.error.flatten().fieldErrors
-    return { error: 'Dados inválidos', details: err }
-  }
-
-  const payload = parsed.data
-
-  const { error } = await supabase
-    .from('budgets')
-    .update({
-      category: payload.category,
-      year: payload.year,
-      month: payload.month,
-      amount: payload.amount,
-    })
-    .eq('id', payload.id)
-    .eq('user_id', user!.id)
-
-  if (error) {
-    console.error('updateBudget error:', error)
-    return { error: 'Falha ao atualizar orçamento.' }
-  }
-
-  revalidatePath('/budget')
-  redirect(toList(payload.year, payload.month))
-}
-
+/**
+ * Exclui um orçamento por ID, garantindo que pertence ao usuário logado.
+ */
 export async function deleteBudget(formData: FormData) {
-  const supabase = createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+  const id = String(formData.get('id') ?? '')
+  if (!id) return
 
-  if (!user) {
-    redirect(`/login?redirectTo=${encodeURIComponent('/budget')}`)
-  }
+  const supabase = createActionClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return
+
+  await supabase.from('budgets').delete().eq('id', id).eq('user_id', user.id)
+
+  revalidatePath('/budget')
+}
+
+/**
+ * (Opcional) Salva orçamento usando upsert (pode ser usado para criar/editar).
+ * Mantém compat com coluna textual `category` se ela for NOT NULL.
+ */
+export async function upsertBudget(formData: FormData) {
+  const supabase = createActionClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return
 
   const id = String(formData.get('id') ?? '')
-  const year = Number(formData.get('year') ?? '')
-  const month = Number(formData.get('month') ?? '')
+  const category_id = String(formData.get('category_id') ?? '')
+  const year = Number(formData.get('year'))
+  const month = Number(formData.get('month'))
+  const amount = Number(formData.get('amount'))
 
-  if (!id) return { error: 'ID inválido.' }
+  // Descobre nome da categoria para satisfazer `category` (texto), se existir NOT NULL
+  let categoryName: string | null = null
+  if (category_id) {
+    const { data: cat } = await supabase
+      .from('categories')
+      .select('name')
+      .eq('id', category_id)
+      .eq('user_id', user.id)
+      .maybeSingle()
+    categoryName = cat?.name ?? null
+  }
 
-  const { error } = await supabase.from('budgets').delete().eq('id', id).eq('user_id', user!.id)
+  // Se tiver id, faz UPDATE direto; senão, UPSERT por (user_id,year,month,category_id)
+  if (id) {
+    const { error } = await supabase
+      .from('budgets')
+      .update({
+        category_id,
+        year,
+        month,
+        amount,
+        ...(categoryName ? { category: categoryName } : {}), // compat opcional
+      })
+      .eq('id', id)
+      .eq('user_id', user.id)
 
-  if (error) {
-    console.error('deleteBudget error:', error)
-    return { error: 'Falha ao excluir orçamento.' }
+    if (error) throw new Error(error.message)
+  } else {
+    const { error } = await supabase
+      .from('budgets')
+      .upsert(
+        {
+          user_id: user.id,
+          category_id,
+          year,
+          month,
+          amount,
+          ...(categoryName ? { category: categoryName } : {}), // compat opcional
+        },
+        { onConflict: 'user_id,year,month,category_id' }
+      )
+    if (error) throw new Error(error.message)
   }
 
   revalidatePath('/budget')
-  redirect(Number.isFinite(year) && Number.isFinite(month) ? toList(year, month) : '/budget')
 }
