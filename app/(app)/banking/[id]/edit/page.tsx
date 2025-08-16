@@ -42,17 +42,15 @@ export default async function EditAccountPage({ params }: { params: { id: string
     notFound()
   }
 
-  // ---- Server Action wrappers (apenas FormData) ----
+  // Server Actions (FormData-only)
   const doUpdate = async (fd: FormData) => { 'use server'
     const { updateAccount } = await import('../../actions')
     await updateAccount(fd)
   }
-
   const doArchive = async (fd: FormData) => { 'use server'
     const { archiveAccount } = await import('../../actions')
     await archiveAccount(fd)
   }
-
   const doDelete = async (fd: FormData) => { 'use server'
     const { deleteAccount } = await import('../../actions')
     await deleteAccount(fd)
@@ -77,7 +75,6 @@ export default async function EditAccountPage({ params }: { params: { id: string
           </Link>
         </div>
 
-        {/* Form principal */}
         <form id="account-edit-form" action={doUpdate} className="space-y-4">
           <input type="hidden" name="id" value={acc.id} />
 
@@ -142,7 +139,6 @@ export default async function EditAccountPage({ params }: { params: { id: string
             </div>
           </div>
 
-          {/* Aparência (client component) */}
           <IconColorPicker
             label="Aparência"
             hint="Escolha um ícone e uma cor para identificar a conta visualmente."
@@ -159,32 +155,24 @@ export default async function EditAccountPage({ params }: { params: { id: string
             >
               Salvar alterações
             </button>
-            <Link
-              href="/banking"
-              className="px-4 py-2 border rounded-lg hover:bg-neutral-50"
-            >
+            <Link href="/banking" className="px-4 py-2 border rounded-lg hover:bg-neutral-50">
               Cancelar
             </Link>
           </div>
         </form>
 
-        {/* Ações secundárias: Arquivar / Reativar / Excluir */}
         <div className="flex items-center gap-3">
           <form action={doArchive}>
             <input type="hidden" name="id" value={acc.id} />
             <input type="hidden" name="archived" value={acc.archived ? 'false' : 'true'} />
-            <button
-              className="px-3 py-2 rounded-lg border border-neutral-200 text-neutral-700 hover:bg-neutral-50"
-            >
+            <button className="px-3 py-2 rounded-lg border border-neutral-200 text-neutral-700 hover:bg-neutral-50">
               {acc.archived ? 'Reativar conta' : 'Arquivar conta'}
             </button>
           </form>
 
           <form action={doDelete}>
             <input type="hidden" name="id" value={acc.id} />
-            <button
-              className="px-3 py-2 rounded-lg border border-red-200 text-red-600 hover:bg-red-50"
-            >
+            <button className="px-3 py-2 rounded-lg border border-red-200 text-red-600 hover:bg-red-50">
               Excluir conta
             </button>
           </form>
@@ -197,4 +185,3 @@ export default async function EditAccountPage({ params }: { params: { id: string
     </main>
   )
 }
-
