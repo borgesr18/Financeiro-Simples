@@ -1,5 +1,5 @@
 // app/(app)/banking/[id]/edit/page.tsx
-import { notFound } from 'next/navigation'
+import { notFound, redirect } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
 import IconColorPicker from '@/components/IconColorPicker'
@@ -29,17 +29,16 @@ const ACCOUNT_TYPES: { value: Account['type']; label: string }[] = [
 export default async function EditAccountPage({ params }: { params: { id: string } }) {
   const supabase = createClient()
   const { data: { user } } = await supabase.auth.getUser()
-  if (!user) notFound()
+  if (!user) redirect('/login')
 
   const { data: acc, error } = await supabase
     .from('accounts')
-    .select('id, name, type, institution, currency, color_hex, icon_slug, archived')
+    .select('id, name, type, institution, currency, color_hex, icon_slug, archived, user_id')
     .eq('id', params.id)
-    .eq('user_id', user!.id)
     .single()
 
-  if (error || !acc) {
-    console.error('[banking/edit] conta não encontrada', error)
+  if (error || !acc || acc.user_id !== user.id) {
+    console.error('[banking/edit] conta não encontrada ou sem permissão', error)
     notFound()
   }
 
@@ -64,11 +63,10 @@ export default async function EditAccountPage({ params }: { params: { id: string
       <div className="max-w-3xl mx-auto bg-white rounded-xl shadow-card p-6 space-y-6">
         <div className="flex items-start justify-between gap-4">
           <div>
-            <h2 className="text-xl font-semibold">
-              Editar conta
-            </h2>
+            <h2 className="text-xl font-semibold">Editar conta</h2>
             <p className="text-sm text-neutral-500">
-              Ajuste as informações da sua conta. {acc.archived && <span className="text-amber-600 font-medium">Esta conta está arquivada.</span>}
+              Ajuste as informações da sua conta.{' '}
+              {acc.archived && <span className="text-amber-600 font-medium">Esta conta está arquivada.</span>}
             </p>
           </div>
           <Link
@@ -141,7 +139,6 @@ export default async function EditAccountPage({ params }: { params: { id: string
                 value={acc.archived ? 'Arquivada' : 'Ativa'}
                 className="w-full px-3 py-2 border rounded-lg bg-neutral-50 text-neutral-600"
               />
-              {/* Enviamos archived via outro form (toggle) */}
             </div>
           </div>
 
@@ -171,7 +168,7 @@ export default async function EditAccountPage({ params }: { params: { id: string
           </div>
         </form>
 
-        {/* Ações secundárias: Arquivar / Reativar */}
+        {/* Ações secundárias: Arquivar / Reativar / Excluir */}
         <div className="flex items-center gap-3">
           <form action={doArchive}>
             <input type="hidden" name="id" value={acc.id} />
@@ -183,7 +180,6 @@ export default async function EditAccountPage({ params }: { params: { id: string
             </button>
           </form>
 
-          {/* Excluir conta */}
           <form action={doDelete}>
             <input type="hidden" name="id" value={acc.id} />
             <button
