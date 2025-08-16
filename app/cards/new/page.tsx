@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
 import IconColorPicker from '@/components/IconColorPicker'
 import { createCard } from '../actions'
+import SubmitButton from '@/components/SubmitButton' // opcional, melhora UX
 
 export default async function NewCardPage() {
   const supabase = createClient()
@@ -70,7 +71,7 @@ export default async function NewCardPage() {
               <label className="block text-sm mb-1">Limite (R$)</label>
               <input
                 name="limit_amount"
-                type="number"
+                inputMode="decimal"
                 step="0.01"
                 className="w-full px-3 py-2 border rounded-lg bg-neutral-50"
                 placeholder="ex: 5000"
@@ -87,6 +88,7 @@ export default async function NewCardPage() {
                 min={1}
                 max={28}
                 defaultValue={5}
+                required
                 className="w-full px-3 py-2 border rounded-lg bg-neutral-50"
               />
             </div>
@@ -97,6 +99,8 @@ export default async function NewCardPage() {
                 type="number"
                 min={1}
                 max={28}
+                defaultValue={12}
+                required
                 className="w-full px-3 py-2 border rounded-lg bg-neutral-50"
                 placeholder="ex: 15"
               />
@@ -111,9 +115,7 @@ export default async function NewCardPage() {
           />
 
           <div className="pt-2 flex items-center gap-2">
-            <button type="submit" className="px-4 py-2 bg-primary-500 text-white rounded-lg">
-              Salvar
-            </button>
+            <SubmitButton>Salvar</SubmitButton>
             <Link href="/cards" className="px-4 py-2 border rounded-lg">Cancelar</Link>
           </div>
         </form>
