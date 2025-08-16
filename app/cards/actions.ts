@@ -4,6 +4,8 @@ import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { randomUUID } from 'crypto'
+// Import para detectar o redirect do Next (não tratar como erro)
+import { isRedirectError } from 'next/dist/client/components/redirect'
 
 /* =========================
    Helpers de saneamento
@@ -103,13 +105,16 @@ export async function createCard(fd: FormData) {
       console.error('[cards:createCard] cards.insert error', cardErr)
       throw cardErr
     }
-
-    revalidatePath('/cards')
-    redirect('/cards')
   } catch (e) {
+    // Se for o redirect do Next, repassa (não transformar em erro)
+    if (isRedirectError(e)) throw e
     console.error('[cards:createCard] fail', e)
     throw new Error('Falha ao criar cartão')
   }
+
+  // sucesso → revalida e redireciona (fora do try/catch para não capturar o redirect)
+  revalidatePath('/cards')
+  redirect('/cards')
 }
 
 /* =========================
@@ -220,14 +225,15 @@ export async function updateCard(id: string, fd: FormData) {
       )
       // não lançamos — segue o fluxo
     }
-
-    // 5) Revalida e redireciona
-    revalidatePath('/cards')
-    redirect('/cards')
   } catch (e) {
+    if (isRedirectError(e)) throw e
     console.error('[cards:updateCard] fail', e)
     throw new Error('Falha ao atualizar cartão')
   }
+
+  // sucesso → revalida e redireciona (fora do try/catch para não capturar o redirect)
+  revalidatePath('/cards')
+  redirect('/cards')
 }
 
 /* =========================
@@ -257,7 +263,7 @@ export async function archiveCard(id: string) {
 }
 
 /* =========================
-   STATEMENTS
+   STATEMENTS (gerar fatura)
    ========================= */
 function computeCycle(closingDay: number, base = new Date()) {
   const y = base.getFullYear()
