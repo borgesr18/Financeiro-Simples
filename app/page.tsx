@@ -145,7 +145,8 @@ export default async function DashboardPage() {
   })
 
   return (
-    <main className="p-6 space-y-6">
+    // ⬇️ Barra de rolagem garantida e folga no fim
+    <main className="p-6 space-y-6 min-h-dvh min-h-screen overflow-y-auto pb-24">
       {/* Cabeçalho */}
       <div className="flex items-start sm:items-center justify-between">
         <div>
@@ -267,6 +268,3 @@ export default async function DashboardPage() {
     </main>
   )
 }
-
-
-
