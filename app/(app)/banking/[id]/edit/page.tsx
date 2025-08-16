@@ -23,7 +23,7 @@ export default async function EditAccountPage({ params }: { params: { id: string
   if (!acc) {
     return (
       <main className="p-6">
-        <div className="max-w-xl mx-auto bg-white rounded-xl shadow-card p-6">
+        <div className="max-w-3xl mx-auto bg-white rounded-xl shadow-card p-6">
           <p className="mb-4">Conta não encontrada.</p>
           <Link href="/banking" className="px-4 py-2 bg-primary-500 text-white rounded-lg">Voltar</Link>
         </div>
@@ -42,21 +42,33 @@ export default async function EditAccountPage({ params }: { params: { id: string
 
   return (
     <main className="p-6">
-      <div className="max-w-xl mx-auto bg-white rounded-xl shadow-card p-6 space-y-4">
-        <div className="flex items-start sm:items-center justify-between">
-          <h1 className="text-xl font-semibold">Editar conta</h1>
-          <Link href="/banking" className="px-3 py-1.5 rounded-lg border hover:bg-neutral-50">Voltar</Link>
+      <div className="max-w-3xl mx-auto bg-white rounded-xl shadow-card p-6 space-y-4">
+        {/* Barra de título + ações (Salvar sempre visível) */}
+        <div className="flex items-start sm:items-center justify-between gap-2">
+          <div>
+            <h1 className="text-2xl font-semibold">Editar conta</h1>
+            <p className="text-sm text-neutral-500">
+              Criada em {new Date(acc.created_at).toLocaleDateString()} · Saldo atual:{' '}
+              <span className={balance < 0 ? 'text-rose-600' : 'text-emerald-600'}>
+                R$ {balance.toFixed(2)}
+              </span>
+            </p>
+          </div>
+          <div className="flex gap-2">
+            <Link href="/banking" className="px-3 py-1.5 rounded-lg border hover:bg-neutral-50">Voltar</Link>
+            {/* botão de submit que envia o form pelo atributo form */}
+            <button
+              type="submit"
+              form="account-edit-form"
+              className="px-4 py-2 bg-sky-500 text-white rounded-lg"
+            >
+              Salvar
+            </button>
+          </div>
         </div>
 
-        <p className="text-sm text-neutral-500">
-          Criada em {new Date(acc.created_at).toLocaleDateString()} · Saldo atual:{' '}
-          <span className={balance < 0 ? 'text-rose-600' : 'text-emerald-600'}>
-            R$ {balance.toFixed(2)}
-          </span>
-        </p>
-
-        {/* Server Action: updateAccount */}
-        <form action={updateAccount} className="space-y-4">
+        {/* Form principal */}
+        <form id="account-edit-form" action={updateAccount} className="space-y-4">
           <input type="hidden" name="id" value={acc.id} />
 
           <div>
@@ -94,8 +106,8 @@ export default async function EditAccountPage({ params }: { params: { id: string
             />
           </div>
 
-          {/* Ícone e Cor com componentes "amigáveis" */}
-          <div className="grid grid-cols-2 gap-4">
+          {/* Cor & Ícone lado a lado; o card mais largo evita “aperto” */}
+          <div className="grid md:grid-cols-2 gap-4">
             <ColorField name="color_hex" value={acc.color_hex ?? '#22c55e'} label="Cor" />
             <IconPicker name="icon_slug" value={acc.icon_slug ?? 'wallet'} label="Ícone" />
           </div>
@@ -114,7 +126,8 @@ export default async function EditAccountPage({ params }: { params: { id: string
             <label htmlFor="archived" className="text-sm">Arquivar conta</label>
           </div>
 
-          <div className="flex gap-2">
+          {/* Rodapé sticky com ações (fica visível mesmo com muito conteúdo) */}
+          <div className="sticky bottom-0 -mx-6 px-6 pt-4 border-t bg-white flex gap-2">
             <button className="px-4 py-2 bg-sky-500 text-white rounded-lg">Salvar mudanças</button>
             <Link href="/banking" className="px-4 py-2 rounded-lg border hover:bg-neutral-50">Cancelar</Link>
           </div>
@@ -123,4 +136,5 @@ export default async function EditAccountPage({ params }: { params: { id: string
     </main>
   )
 }
+
 
