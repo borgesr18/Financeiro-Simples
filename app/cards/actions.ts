@@ -5,15 +5,15 @@ import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { randomUUID } from 'crypto'
 
-// --- Helpers robustas (tratam vazio e clampam) ---
+// --------- Helpers ---------
 function clampInt(
   v: FormDataEntryValue | null,
   min: number,
   max: number,
   fb: number
 ) {
-  // Trata string vazia como inválida (vira fb)
-  const raw = typeof v === 'string' ? (v.trim() === '' ? NaN : Number(v)) : Number(v)
+  const raw =
+    typeof v === 'string' ? (v.trim() === '' ? NaN : Number(v)) : Number(v)
   if (!Number.isFinite(raw)) return fb
   const n = Math.trunc(raw as number)
   if (n < min || n > max) return fb
@@ -21,11 +21,17 @@ function clampInt(
 }
 
 function toNum(v: FormDataEntryValue | null, fb = 0) {
-  const raw = typeof v === 'string' ? (v.trim() === '' ? NaN : Number(v)) : Number(v)
+  const raw =
+    typeof v === 'string' ? (v.trim() === '' ? NaN : Number(v)) : Number(v)
   return Number.isFinite(raw) ? (raw as number) : fb
 }
 
-// ============ CREATE ============
+function strOrNull(v: FormDataEntryValue | null) {
+  const s = (v ?? '').toString().trim()
+  return s === '' ? null : s
+}
+
+// --------- CREATE ----------
 export async function createCard(fd: FormData) {
   'use server'
 
@@ -34,12 +40,14 @@ export async function createCard(fd: FormData) {
   if (!user) throw new Error('Sem usuário')
 
   try {
-    const name = (fd.get('name') || 'Cartão').toString()
-    const brand = (fd.get('brand') || '').toString() || null
-    const last4 = (fd.get('last4') || '').toString() || null
-    const institution = (fd.get('institution') || '').toString() || null
-    const color_hex = (fd.get('color_hex') || '').toString() || null
-    const icon_slug = (fd.get('icon_slug') || '').toString() || null
+    const nameRaw = (fd.get('name') ?? '').toString().trim()
+    const name = nameRaw || 'Cartão' // nunca null
+
+    const brand = strOrNull(fd.get('brand'))
+    const last4 = strOrNull(fd.get('last4'))
+    const institution = strOrNull(fd.get('institution'))
+    const color_hex = strOrNull(fd.get('color_hex'))
+    const icon_slug = strOrNull(fd.get('icon_slug'))
     const limit_amount = toNum(fd.get('limit_amount'), 0)
 
     const closing_day = clampInt(fd.get('closing_day'), 1, 28, 5)
@@ -70,7 +78,7 @@ export async function createCard(fd: FormData) {
       throw accErr
     }
 
-    // 2) cria o card vinculado à account
+    // 2) cria o card vinculado
     const { error: cardErr } = await supabase
       .from('cards')
       .insert({
@@ -100,7 +108,7 @@ export async function createCard(fd: FormData) {
   }
 }
 
-// ============ UPDATE ============
+// --------- UPDATE ----------
 export async function updateCard(id: string, fd: FormData) {
   'use server'
 
@@ -109,44 +117,66 @@ export async function updateCard(id: string, fd: FormData) {
   if (!user) throw new Error('Sem usuário')
 
   try {
-    // busca o card para pegar account_id
-    const { data: card, error: cardGetErr } = await supabase
+    // Busca cartão atual para fallbacks / validações
+    const { data: current, error: getErr } = await supabase
       .from('cards')
-      .select('id, account_id')
+      .select(
+        'id, account_id, name, brand, last4, limit_amount, closing_day, due_day, institution, color_hex, icon_slug, archived'
+      )
       .eq('user_id', user.id)
       .eq('id', id)
       .single()
 
-    if (cardGetErr || !card) {
-      console.error('[cards:updateCard] get card error', cardGetErr)
+    if (getErr || !current) {
+      console.error('[cards:updateCard] get card error', getErr)
       throw new Error('Cartão não encontrado')
     }
 
-    const name = (fd.get('name') || '').toString() || null
-    const brand = (fd.get('brand') || '').toString() || null
-    const last4 = (fd.get('last4') || '').toString() || null
-    const institution = (fd.get('institution') || '').toString() || null
-    const color_hex = (fd.get('color_hex') || '').toString() || null
-    const icon_slug = (fd.get('icon_slug') || '').toString() || null
-    const limit_amount = toNum(fd.get('limit_amount'), 0)
+    // Campos do form
+    const nameRaw = (fd.get('name') ?? '').toString().trim()
+    const name = nameRaw || current.name // nunca null
 
-    const closing_day = clampInt(fd.get('closing_day'), 1, 28, 5)
+    const brand = strOrNull(fd.get('brand'))
+    const last4 = strOrNull(fd.get('last4'))
+    const institution = strOrNull(fd.get('institution'))
+    const color_hex = strOrNull(fd.get('color_hex'))
+    const icon_slug = strOrNull(fd.get('icon_slug'))
+    const limit_amount = toNum(fd.get('limit_amount'), current.limit_amount ?? 0)
+
+    const closing_day = clampInt(
+      fd.get('closing_day'),
+      1,
+      28,
+      current.closing_day ?? 5
+    )
     const due_day = clampInt(
       fd.get('due_day'),
       1,
       28,
-      Math.min(28, closing_day + 7)
+      current.due_day ?? Math.min(28, closing_day + 7)
     )
 
-    const archived = (fd.get('archived') || '').toString() === 'on'
+    const archived =
+      (fd.get('archived') || '').toString().trim().toLowerCase() === 'on'
+
+    // Monta payload de update do card (evita mandar null onde não pode)
+    const cardUpd: any = {
+      name,
+      limit_amount,
+      closing_day,
+      due_day,
+      archived,
+    }
+    // opcionais: só incluímos se houver valor (null é permitido nessas colunas)
+    cardUpd.brand = brand
+    cardUpd.last4 = last4
+    cardUpd.institution = institution
+    cardUpd.color_hex = color_hex
+    cardUpd.icon_slug = icon_slug
 
     const { error: cardErr } = await supabase
       .from('cards')
-      .update({
-        name, brand, last4, institution,
-        color_hex, icon_slug,
-        limit_amount, closing_day, due_day, archived,
-      })
+      .update(cardUpd)
       .eq('user_id', user.id)
       .eq('id', id)
 
@@ -155,11 +185,18 @@ export async function updateCard(id: string, fd: FormData) {
       throw cardErr
     }
 
-    // espelha na account relacionada
+    // Espelha dados relevantes na account
+    const accUpd: any = {}
+    // name de account nunca pode ser null — usamos sempre `name`
+    accUpd.name = name
+    if (institution !== null) accUpd.institution = institution
+    if (color_hex !== null) accUpd.color_hex = color_hex
+    if (icon_slug !== null) accUpd.icon_slug = icon_slug
+
     const { error: accErr } = await supabase
       .from('accounts')
-      .update({ name, institution, color_hex, icon_slug })
-      .eq('id', card.account_id)
+      .update(accUpd)
+      .eq('id', current.account_id)
       .eq('user_id', user.id)
 
     if (accErr) {
@@ -175,7 +212,7 @@ export async function updateCard(id: string, fd: FormData) {
   }
 }
 
-// ============ ARCHIVE ============
+// --------- ARCHIVE ----------
 export async function archiveCard(id: string) {
   'use server'
   const supabase = createClient()
@@ -195,7 +232,7 @@ export async function archiveCard(id: string) {
   revalidatePath('/cards')
 }
 
-// ============ STATEMENTS ============
+// --------- STATEMENTS (inalterado) ----------
 function computeCycle(closingDay: number, base = new Date()) {
   const y = base.getFullYear()
   const m = base.getMonth()
@@ -376,4 +413,3 @@ export async function payStatement(statementId: string, payFromAccountId: string
   revalidatePath(`/cards/${st.card_id}/statements`)
   revalidatePath('/cards')
 }
-
