@@ -1,102 +1,83 @@
+// app/(app)/banking/actions.ts
 'use server'
 
-import { createClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
-import { isRedirectError } from 'next/dist/client/components/redirect'
+import { createClient } from '@/lib/supabase/server'
 
-/* Utils */
-const isUuid = (s: string) =>
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(s)
-
-const str = (v: FormDataEntryValue | null) => {
-  const s = (v ?? '').toString().trim()
-  return s || null
-}
-const must = (v: string | null, label: string) => {
-  if (!v) throw new Error(`${label} é obrigatório`)
-  return v
-}
-function normMoney(v: FormDataEntryValue | null, fb = 0) {
-  const s = (v ?? '').toString().trim()
-  if (!s) return fb
-  const norm = s.replace(/\s/g, '').replace(/\./g, '').replace(',', '.')
-  const n = Number(norm)
-  return Number.isFinite(n) ? n : fb
-}
-function todayISO() {
-  const d = new Date()
-  const y = d.getFullYear()
-  const m = String(d.getMonth() + 1).padStart(2, '0')
-  const day = String(d.getDate()).padStart(2, '0')
-  return `${y}-${m}-${day}`
+/** Converte valores monetários em pt-BR para número JS. Aceita "1.234,56" ou "1234.56". */
+function parseMoneyBR(input: FormDataEntryValue | null): number {
+  if (input === null || input === undefined) return 0
+  let s = String(input).trim()
+  if (!s) return 0
+  // mantém sinal
+  const sign = s.startsWith('-') ? -1 : 1
+  s = s.replace(/[^0-9.,-]/g, '')
+  // se tem vírgula, ela é decimal; pontos são milhares
+  if (s.includes(',')) {
+    s = s.replace(/\./g, '').replace(',', '.')
+  }
+  const n = Number(s)
+  if (Number.isNaN(n)) return 0
+  return Math.round(n * 100) / 100 * sign
 }
 
-/* ------------------------------
-   CONTAS
---------------------------------*/
-
-/** Criar conta + saldo inicial opcional */
-export async function createAccount(fd: FormData) {
+async function requireUser() {
   const supabase = createClient()
   const { data: { user } } = await supabase.auth.getUser()
-  if (!user) throw new Error('Sem sessão')
+  if (!user) redirect('/login')
+  return { supabase, user }
+}
 
-  try {
-    const name = must(str(fd.get('name')), 'Nome')
-    const type = (str(fd.get('type')) ?? 'other') as
-      | 'wallet' | 'checking' | 'savings' | 'credit' | 'investment' | 'other'
-    const institution = str(fd.get('institution'))
-    const currency = (str(fd.get('currency')) ?? 'BRL')!
-    const color_hex = str(fd.get('color_hex'))
-    const icon_slug = str(fd.get('icon_slug'))
+/** Cria conta + (opcional) saldo inicial via lançamento em `transactions` */
+export async function createAccount(fd: FormData) {
+  const { supabase, user } = await requireUser()
 
-    // 1) cria a conta
-    const { data: acc, error: e1 } = await supabase
-      .from('accounts')
-      .insert({
-        user_id: user.id,
-        name, type, institution, currency,
-        color_hex, icon_slug,
-        archived: false,
-      })
-      .select('id')
-      .single()
+  const name = String(fd.get('name') ?? '').trim()
+  const type = (fd.get('type') as string) || 'other'
+  const institution = (fd.get('institution') as string) || null
+  const color_hex = (fd.get('color_hex') as string) || null
+  const icon_slug = (fd.get('icon_slug') as string) || null
+  const currency = (fd.get('currency') as string) || 'BRL'
 
-    if (e1) {
-      console.error('[banking:createAccount] account', {
-        code: (e1 as any).code, message: e1.message, details: (e1 as any).details, hint: (e1 as any).hint
-      })
-      throw new Error(e1.message || 'Falha ao criar conta')
+  if (!name) throw new Error('Nome é obrigatório')
+
+  const { data: acc, error } = await supabase
+    .from('accounts')
+    .insert({
+      user_id: user.id,
+      name,
+      type,
+      institution,
+      color_hex,
+      icon_slug,
+      currency,
+    })
+    .select('id')
+    .single()
+
+  if (error) {
+    console.error('[banking:createAccount] insert accounts', error)
+    throw new Error('Falha ao criar conta')
+  }
+
+  // Saldo inicial (opcional)
+  const opening = parseMoneyBR(fd.get('opening_balance'))
+  const openingDate = (fd.get('opening_date') as string) || new Date().toISOString().slice(0, 10)
+  if (opening !== 0) {
+    const { error: e2 } = await supabase.from('transactions').insert({
+      user_id: user.id,
+      account_id: acc.id,
+      date: openingDate,
+      description: 'Saldo inicial',
+      amount: opening, // >0 crédito / <0 débito
+      type: opening > 0 ? 'income' : 'expense',
+    })
+    if (e2) {
+      console.error('[banking:createAccount] opening balance tx', e2)
+      // Preferimos não remover a conta criada; apenas avisamos
+      throw new Error('Conta criada, mas falhou o lançamento do saldo inicial')
     }
-
-    // 2) saldo inicial (opcional)
-    const initial = normMoney(fd.get('initial_balance'), 0)
-    if (initial !== 0) {
-      const payload = {
-        user_id: user.id,
-        date: todayISO(),
-        description: 'Saldo inicial',
-        amount: Math.abs(initial),
-        type: initial >= 0 ? 'in' : 'out' as 'in' | 'out',
-        account_id: acc.id,
-        // category_id: null, // use se sua coluna permitir null
-      }
-      const { error: e2 } = await supabase.from('transactions').insert(payload)
-      if (e2) {
-        console.error('[banking:createAccount] initial', {
-          payload,
-          code: (e2 as any).code, message: e2.message, details: (e2 as any).details, hint: (e2 as any).hint
-        })
-        // rollback para não deixar conta sem o saldo esperado
-        await supabase.from('accounts').delete().eq('id', acc.id).eq('user_id', user.id)
-        throw new Error(e2.message || 'Conta criada, mas falha ao registrar saldo inicial')
-      }
-    }
-  } catch (e) {
-    if (isRedirectError(e)) throw e
-    console.error('[banking:createAccount] fail', e)
-    throw e
   }
 
   revalidatePath('/banking')
@@ -105,56 +86,44 @@ export async function createAccount(fd: FormData) {
   redirect('/banking')
 }
 
-/** Atualizar conta lendo o id do próprio FormData (para usar direto no <form action={...}>) */
+/** Atualiza conta (não mexe em saldo) */
 export async function updateAccount(fd: FormData) {
-  const supabase = createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) throw new Error('Sem sessão')
+  const { supabase, user } = await requireUser()
 
-  try {
-    const id = must(str(fd.get('id')), 'ID')
-    if (!isUuid(id)) throw new Error('Conta inválida')
+  const id = String(fd.get('id') ?? '')
+  const name = String(fd.get('name') ?? '').trim()
+  const type = (fd.get('type') as string) || 'other'
+  const institution = (fd.get('institution') as string) || null
+  const currency = (fd.get('currency') as string) || 'BRL'
+  const color_hex = (fd.get('color_hex') as string) || null
+  const icon_slug = (fd.get('icon_slug') as string) || null
 
-    const name = must(str(fd.get('name')), 'Nome')
-    const type = (str(fd.get('type')) ?? 'other') as
-      | 'wallet' | 'checking' | 'savings' | 'credit' | 'investment' | 'other'
-    const institution = str(fd.get('institution'))
-    const currency = (str(fd.get('currency')) ?? 'BRL')!
-    const color_hex = str(fd.get('color_hex'))
-    const icon_slug = str(fd.get('icon_slug'))
-    const archived = (str(fd.get('archived')) === 'true')
+  if (!id) throw new Error('ID da conta ausente')
+  if (!name) throw new Error('Nome é obrigatório')
 
-    const { error } = await supabase
-      .from('accounts')
-      .update({ name, type, institution, currency, color_hex, icon_slug, archived })
-      .eq('id', id)
-      .eq('user_id', user.id)
+  const { error } = await supabase
+    .from('accounts')
+    .update({ name, type, institution, currency, color_hex, icon_slug })
+    .eq('id', id)
+    .eq('user_id', user.id)
 
-    if (error) {
-      console.error('[banking:updateAccount]', {
-        code: (error as any).code, message: error.message, details: (error as any).details, hint: (error as any).hint
-      })
-      throw new Error(error.message || 'Falha ao atualizar conta')
-    }
-  } catch (e) {
-    if (isRedirectError(e)) throw e
-    console.error('[banking:updateAccount] fail', e)
-    throw e
+  if (error) {
+    console.error('[banking:updateAccount] update accounts', error)
+    throw new Error('Falha ao atualizar conta')
   }
 
   revalidatePath('/banking')
+  revalidatePath('/')
   redirect('/banking')
 }
 
-/** Arquivar/reativar conta (toggle) via FormData (id, archived) */
+/** Arquiva / Reativa conta */
 export async function archiveAccount(fd: FormData) {
-  const supabase = createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) throw new Error('Sem sessão')
+  const { supabase, user } = await requireUser()
 
-  const id = must(str(fd.get('id')), 'ID')
-  if (!isUuid(id)) throw new Error('Conta inválida')
-  const archived = str(fd.get('archived')) === 'true'
+  const id = String(fd.get('id') ?? '')
+  const archived = String(fd.get('archived') ?? 'false') === 'true'
+  if (!id) throw new Error('ID da conta ausente')
 
   const { error } = await supabase
     .from('accounts')
@@ -163,95 +132,91 @@ export async function archiveAccount(fd: FormData) {
     .eq('user_id', user.id)
 
   if (error) {
-    console.error('[banking:archiveAccount]', {
-      code: (error as any).code, message: error.message, details: (error as any).details, hint: (error as any).hint
-    })
-    throw new Error(error.message || 'Falha ao alterar status da conta')
+    console.error('[banking:archiveAccount] update archived', error)
+    throw new Error('Falha ao alterar status da conta')
   }
 
   revalidatePath('/banking')
+  redirect('/banking')
 }
 
-/** Deletar conta definitivamente (via <form action={deleteAccount}>) */
+/** Exclui conta (falha se houver lançamentos vinculados sem ON DELETE CASCADE) */
 export async function deleteAccount(fd: FormData) {
-  const supabase = createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) throw new Error('Sem sessão')
+  const { supabase, user } = await requireUser()
+  const id = String(fd.get('id') ?? '')
+  if (!id) throw new Error('ID da conta ausente')
 
-  const id = must(str(fd.get('id')), 'ID')
-  if (!isUuid(id)) throw new Error('Conta inválida')
-
-  // se houver lançamentos vinculados, o FK deve barrar — tratamos a msg
-  const { error } = await supabase.from('accounts').delete().eq('id', id).eq('user_id', user.id)
+  const { error } = await supabase
+    .from('accounts')
+    .delete()
+    .eq('id', id)
+  // Nota: RLS na tabela já restringe ao user_id do token.
 
   if (error) {
-    // 23503 = violação de FK (tem transações ligadas)
-    if ((error as any).code === '23503') {
-      throw new Error('Essa conta possui lançamentos. Arquive-a em vez de excluir.')
+    // 23503 = foreign_key_violation
+    const fk = (error as any)?.code === '23503'
+    console.error('[banking:deleteAccount] delete accounts', error)
+    if (fk) {
+      throw new Error('Não é possível excluir: existem lançamentos vinculados. Arquive a conta.')
     }
-    console.error('[banking:deleteAccount]', {
-      code: (error as any).code, message: error.message, details: (error as any).details, hint: (error as any).hint
-    })
-    throw new Error(error.message || 'Falha ao excluir conta')
+    throw new Error('Falha ao excluir conta')
   }
 
   revalidatePath('/banking')
+  revalidatePath('/transactions')
+  redirect('/banking')
 }
 
-/* ------------------------------
-   TRANSFERÊNCIAS ENTRE CONTAS
---------------------------------*/
-
-/** Cria 2 lançamentos (saída na origem, entrada no destino) em uma única chamada */
+/** Transferência entre contas (gera duas transações espelhadas) */
 export async function createTransfer(fd: FormData) {
-  const supabase = createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) throw new Error('Sem sessão')
+  const { supabase, user } = await requireUser()
 
-  try {
-    const from = must(str(fd.get('from_account_id')), 'Conta de origem')
-    const to   = must(str(fd.get('to_account_id')),   'Conta de destino')
-    if (!isUuid(from) || !isUuid(to)) throw new Error('Conta inválida')
-    if (from === to) throw new Error('Selecione contas diferentes')
+  const from_id = String(fd.get('from_account_id') ?? '')
+  const to_id = String(fd.get('to_account_id') ?? '')
+  const amountNum = parseMoneyBR(fd.get('amount'))
+  const date = (fd.get('date') as string) || new Date().toISOString().slice(0, 10)
+  const description = (fd.get('description') as string) || 'Transferência'
 
-    const amount = normMoney(fd.get('amount'), NaN)
-    if (!Number.isFinite(amount) || amount <= 0) throw new Error('Valor inválido')
+  if (!from_id || !to_id) throw new Error('Contas de origem e destino são obrigatórias')
+  if (from_id === to_id) throw new Error('Contas de origem e destino devem ser diferentes')
+  if (!amountNum || amountNum <= 0) throw new Error('Valor inválido')
 
-    const date = str(fd.get('date')) ?? todayISO()
-    const description = str(fd.get('description')) ?? 'Transferência'
+  // Garante que ambas as contas pertencem ao usuário
+  const { data: accounts, error: eAcc } = await supabase
+    .from('accounts')
+    .select('id')
+    .in('id', [from_id, to_id])
+    .eq('user_id', user.id)
 
-    // duas linhas em um único insert — atômico
-    const rows = [
-      {
-        user_id: user.id,
-        date,
-        description,
-        amount,
-        type: 'out' as const,
-        account_id: from,
-      },
-      {
-        user_id: user.id,
-        date,
-        description,
-        amount,
-        type: 'in' as const,
-        account_id: to,
-      },
-    ]
+  if (eAcc || !accounts || accounts.length !== 2) {
+    console.error('[banking:createTransfer] valida contas', eAcc, accounts)
+    throw new Error('Contas inválidas ou sem permissão')
+  }
 
-    const { error } = await supabase.from('transactions').insert(rows)
-    if (error) {
-      console.error('[banking:createTransfer]', {
-        rows,
-        code: (error as any).code, message: error.message, details: (error as any).details, hint: (error as any).hint
-      })
-      throw new Error(error.message || 'Falha ao transferir')
-    }
-  } catch (e) {
-    if (isRedirectError(e)) throw e
-    console.error('[banking:createTransfer] fail', e)
-    throw e
+  // Saída da origem (valor negativo)
+  const debit = {
+    user_id: user.id,
+    account_id: from_id,
+    date,
+    description,
+    amount: -Math.abs(amountNum),
+    type: 'expense' as const,
+  }
+
+  // Entrada no destino (valor positivo)
+  const credit = {
+    user_id: user.id,
+    account_id: to_id,
+    date,
+    description,
+    amount: Math.abs(amountNum),
+    type: 'income' as const,
+  }
+
+  const { error: e1 } = await supabase.from('transactions').insert([debit, credit])
+  if (e1) {
+    console.error('[banking:createTransfer] insert txs', e1)
+    throw new Error('Falha ao registrar transferência')
   }
 
   revalidatePath('/banking')
