@@ -5,7 +5,9 @@ import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { randomUUID } from 'crypto'
 
-// --------- Helpers ---------
+/* =========================
+   Helpers de saneamento
+   ========================= */
 function clampInt(
   v: FormDataEntryValue | null,
   min: number,
@@ -31,12 +33,16 @@ function strOrNull(v: FormDataEntryValue | null) {
   return s === '' ? null : s
 }
 
-// --------- CREATE ----------
+/* =========================
+   CREATE
+   ========================= */
 export async function createCard(fd: FormData) {
   'use server'
 
   const supabase = createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
   if (!user) throw new Error('Sem usuário')
 
   try {
@@ -58,7 +64,7 @@ export async function createCard(fd: FormData) {
       Math.min(28, closing_day + 7)
     )
 
-    // 1) cria a account tipo credit
+    // 1) cria a account tipo 'credit'
     const { data: acc, error: accErr } = await supabase
       .from('accounts')
       .insert({
@@ -79,21 +85,19 @@ export async function createCard(fd: FormData) {
     }
 
     // 2) cria o card vinculado
-    const { error: cardErr } = await supabase
-      .from('cards')
-      .insert({
-        user_id: user.id,
-        account_id: acc!.id,
-        name,
-        brand,
-        last4,
-        limit_amount,
-        closing_day,
-        due_day,
-        institution,
-        color_hex,
-        icon_slug,
-      })
+    const { error: cardErr } = await supabase.from('cards').insert({
+      user_id: user.id,
+      account_id: acc!.id,
+      name,
+      brand,
+      last4,
+      limit_amount,
+      closing_day,
+      due_day,
+      institution,
+      color_hex,
+      icon_slug,
+    })
 
     if (cardErr) {
       console.error('[cards:createCard] cards.insert error', cardErr)
@@ -108,16 +112,20 @@ export async function createCard(fd: FormData) {
   }
 }
 
-// --------- UPDATE ----------
+/* =========================
+   UPDATE (resiliente)
+   ========================= */
 export async function updateCard(id: string, fd: FormData) {
   'use server'
 
   const supabase = createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
   if (!user) throw new Error('Sem usuário')
 
   try {
-    // Busca cartão atual para fallbacks / validações
+    // 1) Busca cartão atual (fallbacks/validações)
     const { data: current, error: getErr } = await supabase
       .from('cards')
       .select(
@@ -132,7 +140,7 @@ export async function updateCard(id: string, fd: FormData) {
       throw new Error('Cartão não encontrado')
     }
 
-    // Campos do form
+    // 2) Saneia campos do formulário
     const nameRaw = (fd.get('name') ?? '').toString().trim()
     const name = nameRaw || current.name // nunca null
 
@@ -159,7 +167,7 @@ export async function updateCard(id: string, fd: FormData) {
     const archived =
       (fd.get('archived') || '').toString().trim().toLowerCase() === 'on'
 
-    // Monta payload de update do card (evita mandar null onde não pode)
+    // 3) Atualiza CARDS (sempre)
     const cardUpd: any = {
       name,
       limit_amount,
@@ -167,7 +175,7 @@ export async function updateCard(id: string, fd: FormData) {
       due_day,
       archived,
     }
-    // opcionais: só incluímos se houver valor (null é permitido nessas colunas)
+    // opcionais — podem ser null nessas colunas:
     cardUpd.brand = brand
     cardUpd.last4 = last4
     cardUpd.institution = institution
@@ -185,25 +193,35 @@ export async function updateCard(id: string, fd: FormData) {
       throw cardErr
     }
 
-    // Espelha dados relevantes na account
-    const accUpd: any = {}
-    // name de account nunca pode ser null — usamos sempre `name`
-    accUpd.name = name
-    if (institution !== null) accUpd.institution = institution
-    if (color_hex !== null) accUpd.color_hex = color_hex
-    if (icon_slug !== null) accUpd.icon_slug = icon_slug
+    // 4) Espelha em ACCOUNTS (NÃO derruba a ação se falhar)
+    try {
+      const accUpd: any = { name } // name nunca null
+      if (institution !== null) accUpd.institution = institution
+      if (color_hex !== null) accUpd.color_hex = color_hex
+      if (icon_slug !== null) accUpd.icon_slug = icon_slug
 
-    const { error: accErr } = await supabase
-      .from('accounts')
-      .update(accUpd)
-      .eq('id', current.account_id)
-      .eq('user_id', user.id)
+      const { error: accErr } = await supabase
+        .from('accounts')
+        .update(accUpd)
+        .eq('id', current.account_id)
+        .eq('user_id', user.id)
 
-    if (accErr) {
-      console.error('[cards:updateCard] accounts.update error', accErr)
-      throw accErr
+      if (accErr) {
+        console.error(
+          '[cards:updateCard] accounts.update error (IGNORADO)',
+          accErr
+        )
+        // não lançamos — segue o fluxo
+      }
+    } catch (accTryErr) {
+      console.error(
+        '[cards:updateCard] accounts.update exception (IGNORADO)',
+        accTryErr
+      )
+      // não lançamos — segue o fluxo
     }
 
+    // 5) Revalida e redireciona
     revalidatePath('/cards')
     redirect('/cards')
   } catch (e) {
@@ -212,11 +230,16 @@ export async function updateCard(id: string, fd: FormData) {
   }
 }
 
-// --------- ARCHIVE ----------
+/* =========================
+   ARCHIVE
+   ========================= */
 export async function archiveCard(id: string) {
   'use server'
+
   const supabase = createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
   if (!user) throw new Error('Sem usuário')
 
   const { error } = await supabase
@@ -229,10 +252,13 @@ export async function archiveCard(id: string) {
     console.error('[cards:archiveCard] error', error)
     throw new Error('Falha ao arquivar cartão')
   }
+
   revalidatePath('/cards')
 }
 
-// --------- STATEMENTS (inalterado) ----------
+/* =========================
+   STATEMENTS
+   ========================= */
 function computeCycle(closingDay: number, base = new Date()) {
   const y = base.getFullYear()
   const m = base.getMonth()
@@ -240,18 +266,24 @@ function computeCycle(closingDay: number, base = new Date()) {
 
   let end = new Date(y, m, closingDay)
   let start = new Date(y, m - 1, closingDay + 1)
+
+  // se ainda não passou do fechamento deste mês, volta um ciclo
   if (today <= closingDay) {
     end = new Date(y, m - 1, closingDay)
     start = new Date(y, m - 2, closingDay + 1)
   }
+
   const toISO = (d: Date) => d.toISOString().slice(0, 10)
   return { startISO: toISO(start), endISO: toISO(end) }
 }
 
 export async function generateStatement(cardId: string) {
   'use server'
+
   const supabase = createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
   if (!user) throw new Error('Sem usuário')
 
   const { data: c, error: cErr } = await supabase
@@ -285,6 +317,7 @@ export async function generateStatement(cardId: string) {
     throw txErr
   }
 
+  // totaliza apenas saídas (valores negativos)
   const total = (tx ?? []).reduce((acc, t: any) => {
     const a = Number(t.amount) || 0
     return a < 0 ? acc + Math.abs(a) : acc
@@ -315,17 +348,15 @@ export async function generateStatement(cardId: string) {
       throw upErr
     }
   } else {
-    const { error: insErr } = await supabase
-      .from('card_statements')
-      .insert({
-        user_id: user.id,
-        card_id: c.id,
-        cycle_start: startISO,
-        cycle_end: endISO,
-        due_date: dueISO,
-        status: 'closed',
-        amount_total: total,
-      })
+    const { error: insErr } = await supabase.from('card_statements').insert({
+      user_id: user.id,
+      card_id: c.id,
+      cycle_start: startISO,
+      cycle_end: endISO,
+      due_date: dueISO,
+      status: 'closed',
+      amount_total: total,
+    })
     if (insErr) {
       console.error('[cards:generateStatement] insert error', insErr)
       throw insErr
@@ -335,10 +366,19 @@ export async function generateStatement(cardId: string) {
   revalidatePath(`/cards/${cardId}/statements`)
 }
 
-export async function payStatement(statementId: string, payFromAccountId: string) {
+/* =========================
+   PAY STATEMENT
+   ========================= */
+export async function payStatement(
+  statementId: string,
+  payFromAccountId: string
+) {
   'use server'
+
   const supabase = createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
   if (!user) throw new Error('Sem usuário')
 
   const { data: st, error: stErr } = await supabase
@@ -371,6 +411,7 @@ export async function payStatement(statementId: string, payFromAccountId: string
   const group = randomUUID()
   const dateISO = st.due_date as string
 
+  // 1) Saída da conta de pagamento
   const { error: e1 } = await supabase.from('transactions').insert({
     user_id: user.id,
     account_id: payFromAccountId,
@@ -385,6 +426,7 @@ export async function payStatement(statementId: string, payFromAccountId: string
     throw e1
   }
 
+  // 2) Entrada na conta do cartão (reduz devedor)
   const { error: e2 } = await supabase.from('transactions').insert({
     user_id: user.id,
     account_id: card.account_id,
@@ -399,6 +441,7 @@ export async function payStatement(statementId: string, payFromAccountId: string
     throw e2
   }
 
+  // 3) Marca como paga
   const { error: upErr } = await supabase
     .from('card_statements')
     .update({ status: 'paid' })
