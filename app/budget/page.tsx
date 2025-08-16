@@ -23,23 +23,42 @@ export default async function BudgetPage() {
   const year = now.getFullYear();
   const month = now.getMonth() + 1;
 
-  // getBudgetsWithSpend espera (year, month)
-  const lines: BudgetLine[] = await getBudgetsWithSpend(year, month);
+  let lines: BudgetLine[] = [];
+  let errorMsg: string | null = null;
 
-  const { data: categories } = await supabase
+  try {
+    // getBudgetsWithSpend(year, month) — assinatura correta
+    lines = await getBudgetsWithSpend(year, month);
+  } catch (e: any) {
+    console.error("[BudgetPage] Falha em getBudgetsWithSpend:", e);
+    errorMsg = typeof e?.message === "string" ? e.message : "Erro ao carregar orçamentos.";
+  }
+
+  const { data: categories, error: catErr } = await supabase
     .from("categories")
     .select("id, name")
     .eq("user_id", user.id)
     .order("name");
+
+  if (catErr) {
+    console.error("[BudgetPage] Falha ao carregar categorias:", catErr);
+  }
 
   return (
     <main className="p-6">
       <div className="max-w-3xl mx-auto bg-white rounded-xl shadow-card p-6 space-y-6">
         <h2 className="text-xl font-semibold">Orçamentos</h2>
 
+        {errorMsg && (
+          <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
+            <p className="font-medium mb-1">Não foi possível carregar Orçamentos</p>
+            <p>{errorMsg}</p>
+          </div>
+        )}
+
         <BudgetForm
           categories={categories ?? []}
-          onSaved={() => { /* opcional: ação pós-salvar */ }}
+          onSaved={() => { /* opcional: refresh via client */ }}
         />
 
         <div className="overflow-x-auto">
@@ -63,7 +82,7 @@ export default async function BudgetPage() {
                   </td>
                 </tr>
               ))}
-              {lines.length === 0 && (
+              {lines.length === 0 && !errorMsg && (
                 <tr>
                   <td colSpan={4} className="py-4 text-center text-neutral-500">
                     Nenhum orçamento cadastrado para o mês atual.
@@ -77,4 +96,5 @@ export default async function BudgetPage() {
     </main>
   );
 }
+
 
