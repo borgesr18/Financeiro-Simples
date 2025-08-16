@@ -18,10 +18,20 @@ type RelCat =
   | null
   | undefined
 
-type BudgetRow = {
+type BudgetRowYM = {
   id: string
-  amount: number            // <- usa a coluna real do seu schema
+  amount: number
   category_id?: string | null
+  year?: number
+  month?: number
+  categories?: RelCat
+}
+
+type BudgetRowPeriod = {
+  id: string
+  amount: number
+  category_id?: string | null
+  period?: string
   categories?: RelCat
 }
 
@@ -35,26 +45,56 @@ export async function getBudgets(year: number, month: number): Promise<BudgetLin
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return []
 
-  const start = `${year}-${String(month).padStart(2, '0')}-01`
-  const endDate = new Date(year, month, 0) // último dia do mês
+  const y = Number(year)
+  const m = Number(month)
+  const start = `${y}-${String(m).padStart(2, '0')}-01`
+  const endDate = new Date(y, m, 0) // último dia do mês
   const end = endDate.toISOString().slice(0, 10)
+  const period = `${y}-${String(m).padStart(2, '0')}`
 
   try {
-    // Orçamentos do mês
-    const { data: budgetsRaw, error: bErr } = await supabase
-      .from('budgets')
-      .select('id, amount, category_id, categories:category_id(id, name)')
-      .eq('year', year)
-      .eq('month', month)
-      .eq('user_id', user.id)
+    // ========= Orçamentos (tenta YEAR/MONTH, cai para PERIOD) =========
+    let budgetsYM: BudgetRowYM[] | null = null
+    let budgetsPeriod: BudgetRowPeriod[] | null = null
 
-    if (bErr) {
-      console.error('[lib/budgets] Erro budgets:', bErr)
-      throw new Error(bErr.message)
+    // Tentativa 1: year/month
+    {
+      const { data, error } = await supabase
+        .from('budgets')
+        .select('id, amount, category_id, year, month, categories:category_id(id, name)')
+        .eq('user_id', user.id)
+        .eq('year', y)
+        .eq('month', m)
+
+      if (error) {
+        // Se for coluna inexistente (42703), tentamos PERIOD
+        if (error.code === '42703' || /column .* does not exist/i.test(error.message ?? '')) {
+          budgetsYM = null
+        } else {
+          console.error('[lib/budgets] Erro budgets (year/month):', error)
+          throw new Error(error.message)
+        }
+      } else {
+        budgetsYM = (data ?? []) as BudgetRowYM[]
+      }
     }
-    const budgets = (budgetsRaw ?? []) as BudgetRow[]
 
-    // Transações do mês
+    // Tentativa 2: period (se YM falhou por coluna inexistente)
+    if (!budgetsYM) {
+      const { data, error } = await supabase
+        .from('budgets')
+        .select('id, amount, category_id, period, categories:category_id(id, name)')
+        .eq('user_id', user.id)
+        .eq('period', period)
+
+      if (error) {
+        console.error('[lib/budgets] Erro budgets (period):', error)
+        throw new Error(error.message)
+      }
+      budgetsPeriod = (data ?? []) as BudgetRowPeriod[]
+    }
+
+    // ========= Transações do mês =========
     const { data: txs, error: tErr } = await supabase
       .from('transactions')
       .select('category_id, amount, type')
@@ -79,30 +119,46 @@ export async function getBudgets(year: number, month: number): Promise<BudgetLin
 
     const lines: BudgetLine[] = []
 
-    // Linhas com orçamento
-    for (const b of budgets) {
-      const cat = pickCat(b.categories)
-      const catId = (b.category_id ?? cat.id ?? '') as string
-      const spent = spentByCat.get(catId) ?? 0
-      const planned = Number(b.amount) || 0
+    // ========= Montagem das linhas =========
+    if (budgetsYM) {
+      for (const b of budgetsYM) {
+        const cat = pickCat(b.categories)
+        const catId = (b.category_id ?? cat.id ?? '') as string
+        const spent = spentByCat.get(catId) ?? 0
+        const planned = Number(b.amount) || 0
 
-      lines.push({
-        id: b.id,
-        category: cat.name ?? '—',
-        amount: planned,
-        spent,
-        percent: planned > 0 ? (spent / planned) * 100 : 0,
-        over: planned > 0 && spent > planned,
-        hasBudget: true,
-      })
+        lines.push({
+          id: b.id,
+          category: cat.name ?? '—',
+          amount: planned,
+          spent,
+          percent: planned > 0 ? (spent / planned) * 100 : 0,
+          over: planned > 0 && spent > planned,
+          hasBudget: true,
+        })
+      }
+    } else if (budgetsPeriod) {
+      for (const b of budgetsPeriod) {
+        const cat = pickCat(b.categories)
+        const catId = (b.category_id ?? cat.id ?? '') as string
+        const spent = spentByCat.get(catId) ?? 0
+        const planned = Number(b.amount) || 0
+
+        lines.push({
+          id: b.id,
+          category: cat.name ?? '—',
+          amount: planned,
+          spent,
+          percent: planned > 0 ? (spent / planned) * 100 : 0,
+          over: planned > 0 && spent > planned,
+          hasBudget: true,
+        })
+      }
     }
 
-    // Categorias que gastaram mas não têm orçamento
+    // Categorias com gasto mas sem orçamento
     for (const [catId, spent] of spentByCat) {
-      const already = budgets.some((b) => {
-        const cat = pickCat(b.categories)
-        return (b.category_id ?? cat.id) === catId
-      })
+      const already = lines.some((l) => l.category !== 'Sem orçamento' && spent > 0 && catId)
       if (!already) {
         lines.push({
           id: `tx-${catId}`,
@@ -125,4 +181,9 @@ export async function getBudgets(year: number, month: number): Promise<BudgetLin
 
 // Compat com páginas que importam o nome antigo
 export { getBudgets as getBudgetsWithSpend }
+
+
+// Compat com páginas que importam o nome antigo
+e
+
 
