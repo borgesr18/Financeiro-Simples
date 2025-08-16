@@ -27,7 +27,6 @@ export default async function BudgetPage() {
   let errorMsg: string | null = null;
 
   try {
-    // getBudgetsWithSpend(year, month) — assinatura correta
     lines = await getBudgetsWithSpend(year, month);
   } catch (e: any) {
     console.error("[BudgetPage] Falha em getBudgetsWithSpend:", e);
@@ -56,10 +55,7 @@ export default async function BudgetPage() {
           </div>
         )}
 
-        <BudgetForm
-          categories={categories ?? []}
-          onSaved={() => { /* opcional: refresh via client */ }}
-        />
+        <BudgetForm categories={categories ?? []} />
 
         <div className="overflow-x-auto">
           <table className="min-w-[640px] w-full text-sm">
