@@ -1,29 +1,29 @@
 // lib/supabase/server.ts
 import { cookies } from 'next/headers'
-import { createServerClient } from '@supabase/ssr'
+import { createServerClient as createSSRClient, type CookieOptions } from '@supabase/ssr'
 
 export function createClient() {
-  const cookieStore = cookies()
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 
-  return createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        // Somente leitura no render de RSC
-        get(name: string) {
-          return cookieStore.get(name)?.value
-        },
-        // Bloqueia/ignora sets no render para evitar o erro
-        set() {
-          // NOOP em RSC (Next não permite cookies.set aqui)
-        },
-        remove() {
-          // NOOP em RSC
-        },
+  if (!url || !anon) {
+    // Log amigável para detectar isso rápido em produção
+    console.error('[supabase] Faltam variáveis NEXT_PUBLIC_SUPABASE_URL/ANON_KEY no ambiente.')
+    throw new Error('Supabase: variáveis de ambiente ausentes')
+  }
+
+  const store = cookies()
+  return createSSRClient(url, anon, {
+    cookies: {
+      get(name: string) {
+        return store.get(name)?.value
       },
-    }
-  )
+      set(name: string, value: string, options: CookieOptions) {
+        try { store.set({ name, value, ...options }) } catch {}
+      },
+      remove(name: string, options: CookieOptions) {
+        try { store.set({ name, value: '', ...options }) } catch {}
+      },
+    },
+  })
 }
-
-
