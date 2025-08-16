@@ -118,6 +118,7 @@ export async function getBudgets(year: number, month: number): Promise<BudgetLin
     }
 
     const lines: BudgetLine[] = []
+    const budgetedCatIds = new Set<string>() // para saber quem já tem orçamento
 
     // ========= Montagem das linhas =========
     if (budgetsYM) {
@@ -126,6 +127,8 @@ export async function getBudgets(year: number, month: number): Promise<BudgetLin
         const catId = (b.category_id ?? cat.id ?? '') as string
         const spent = spentByCat.get(catId) ?? 0
         const planned = Number(b.amount) || 0
+
+        if (catId) budgetedCatIds.add(catId)
 
         lines.push({
           id: b.id,
@@ -144,6 +147,8 @@ export async function getBudgets(year: number, month: number): Promise<BudgetLin
         const spent = spentByCat.get(catId) ?? 0
         const planned = Number(b.amount) || 0
 
+        if (catId) budgetedCatIds.add(catId)
+
         lines.push({
           id: b.id,
           category: cat.name ?? '—',
@@ -158,8 +163,7 @@ export async function getBudgets(year: number, month: number): Promise<BudgetLin
 
     // Categorias com gasto mas sem orçamento
     for (const [catId, spent] of spentByCat) {
-      const already = lines.some((l) => l.category !== 'Sem orçamento' && spent > 0 && catId)
-      if (!already) {
+      if (!budgetedCatIds.has(catId)) {
         lines.push({
           id: `tx-${catId}`,
           category: 'Sem orçamento',
@@ -173,17 +177,12 @@ export async function getBudgets(year: number, month: number): Promise<BudgetLin
     }
 
     return lines
-  } catch (e) {
-    console.error('[lib/budgets] Falha geral:', e)
-    throw e
+  } catch (err) {
+    console.error('[lib/budgets] Falha geral:', err)
+    throw err
   }
 }
 
 // Compat com páginas que importam o nome antigo
 export { getBudgets as getBudgetsWithSpend }
-
-
-// Compat com páginas que importam o nome antigo
-e
-
 
