@@ -6,23 +6,23 @@ import { useForm } from 'react-hook-form'
 import { z } from 'zod'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { createBrowserClient } from '@supabase/ssr'
+import { useRouter } from 'next/navigation'
 
 const schema = z.object({
   category_id: z.string().min(1, 'Selecione a categoria'),
   year: z.coerce.number().min(2000),
   month: z.coerce.number().min(1).max(12),
-  amount: z.coerce.number().positive(),
+  amount: z.coerce.number().positive(), // <- usa "amount" (schema real da tabela)
 })
 
 type FormData = z.infer<typeof schema>
 
 export default function BudgetForm({
   categories,
-  onSaved,
 }: {
   categories: { id: string; name: string }[]
-  onSaved?: () => void
 }) {
+  const router = useRouter()
   const supabase = createBrowserClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
@@ -50,7 +50,7 @@ export default function BudgetForm({
       category_id: data.category_id,
       year: data.year,
       month: data.month,
-      planned_amount: data.amount,
+      amount: data.amount, // <- coluna existente
     })
 
     if (error) {
@@ -59,7 +59,7 @@ export default function BudgetForm({
     }
 
     reset()
-    if (onSaved) onSaved()
+    router.refresh()
   }
 
   return (
