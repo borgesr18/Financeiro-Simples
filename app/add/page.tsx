@@ -1,8 +1,12 @@
 // app/add/page.tsx
 export const dynamic = 'force-dynamic'
 
+import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
-import AddForm from './ui/AddForm'
+import AddForm from '@/components/AddForm'
+
+type Category = { id: string; name: string }
+type Account = { id: string; name: string }
 
 export default async function AddPage() {
   const supabase = createClient()
@@ -13,23 +17,27 @@ export default async function AddPage() {
       <main className="p-6">
         <div className="max-w-xl mx-auto bg-white rounded-xl shadow-card p-6">
           <p className="mb-4">Faça login para lançar transações.</p>
+          <Link href="/login" className="px-4 py-2 bg-primary-500 text-white rounded-lg">
+            Ir para login
+          </Link>
         </div>
       </main>
     )
   }
 
-  // Carrega categorias do usuário para o select do formulário
-  const { data: categories } = await supabase
-    .from('categories')
-    .select('id, name')
-    .eq('user_id', user.id)
-    .order('name')
+  const [{ data: categories }, { data: accounts }] = await Promise.all([
+    supabase.from('categories').select('id, name').eq('user_id', user.id).order('name'),
+    supabase.from('accounts').select('id, name').eq('user_id', user.id).eq('archived', false).order('created_at'),
+  ])
 
   return (
-    <main className="flex-1 overflow-y-auto p-6 bg-neutral-50">
+    <main className="p-6">
       <div className="max-w-xl mx-auto bg-white rounded-xl shadow-card p-6">
         <h2 className="text-xl font-semibold mb-4">Novo lançamento</h2>
-        <AddForm categories={categories ?? []} />
+        <AddForm
+          categories={(categories ?? []) as Category[]}
+          accounts={(accounts ?? []) as Account[]}
+        />
       </div>
     </main>
   )
