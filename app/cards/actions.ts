@@ -114,7 +114,7 @@ export async function updateCard(id: string, fd: FormData) {
 
   if (cardErr) throw cardErr
 
-  // atualiza account espelhando nome/cor/ícone/instituição
+  // espelha na account
   const { error: accErr } = await supabase
     .from('accounts')
     .update({
@@ -153,8 +153,6 @@ function computeCycle(closingDay: number, base = new Date()) {
   const m = base.getMonth()
   const today = base.getDate()
 
-  // se hoje > closingDay: ciclo_end = dia closingDay deste mês, start = closingDay+1 do mês anterior
-  // senão: ciclo_end = dia closingDay do mês anterior, start = closingDay+1 de dois meses atrás
   let end = new Date(y, m, closingDay)
   let start = new Date(y, m - 1, closingDay + 1)
   if (today <= closingDay) {
@@ -170,7 +168,6 @@ export async function generateStatement(cardId: string) {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) throw new Error('Sem usuário')
 
-  // pega config do cartão
   const { data: c } = await supabase
     .from('cards')
     .select('id, account_id, closing_day, due_day')
@@ -182,12 +179,12 @@ export async function generateStatement(cardId: string) {
 
   const { startISO, endISO } = computeCycle(c.closing_day)
 
-  // calcula due_date no mês do endISO usando due_day
+  // due_date no mês do endISO
   const end = new Date(endISO)
   const due = new Date(end.getFullYear(), end.getMonth(), c.due_day)
   const dueISO = due.toISOString().slice(0, 10)
 
-  // soma das compras (amount < 0) no período
+  // soma compras do período (amount < 0) na conta do cartão
   const { data: tx } = await supabase
     .from('transactions')
     .select('amount, date')
@@ -202,7 +199,7 @@ export async function generateStatement(cardId: string) {
     return a < 0 ? acc + Math.abs(a) : acc
   }, 0)
 
-  // cria ou atualiza a fatura do ciclo
+  // upsert da fatura do ciclo
   const { data: existing } = await supabase
     .from('card_statements')
     .select('id, status')
@@ -240,9 +237,10 @@ export async function payStatement(statementId: string, payFromAccountId: string
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) throw new Error('Sem usuário')
 
+  // pega a fatura (sem nested select para evitar tipagem array)
   const { data: st } = await supabase
     .from('card_statements')
-    .select('id, card_id, amount_total, due_date, cards:card_id(account_id)')
+    .select('id, card_id, amount_total, due_date')
     .eq('user_id', user.id)
     .eq('id', statementId)
     .single()
@@ -252,31 +250,39 @@ export async function payStatement(statementId: string, payFromAccountId: string
   const amount = Number(st.amount_total) || 0
   if (amount <= 0) throw new Error('Valor da fatura inválido')
 
+  // busca a conta do cartão
+  const { data: card } = await supabase
+    .from('cards')
+    .select('account_id')
+    .eq('user_id', user.id)
+    .eq('id', st.card_id)
+    .single()
+
+  const cardAccountId = card?.account_id
+  if (!cardAccountId) throw new Error('Conta do cartão não encontrada')
+
   const group = randomUUID()
   const dateISO = st.due_date as string
 
-  // 1) Lançamento SAÍDA na conta escolhida (ex: corrente)
+  // 1) saída na conta pagadora
   const { error: e1 } = await supabase.from('transactions').insert({
     user_id: user.id,
     account_id: payFromAccountId,
     date: dateISO,
     description: 'Pagamento de fatura',
-    amount: -amount, // sai da conta
+    amount: -amount,
     type: 'expense',
     transfer_group: group,
   })
   if (e1) throw e1
 
-  // 2) Lançamento ENTRADA na conta do cartão (reduz o saldo devedor)
-  const cardAccountId = st.cards?.account_id
-  if (!cardAccountId) throw new Error('Conta do cartão não encontrada')
-
+  // 2) entrada na conta do cartão (reduz dívida)
   const { error: e2 } = await supabase.from('transactions').insert({
     user_id: user.id,
     account_id: cardAccountId,
     date: dateISO,
     description: 'Pagamento recebido - fatura',
-    amount: amount, // entra no cartão (reduz dívida)
+    amount: amount,
     type: 'income',
     transfer_group: group,
   })
@@ -291,3 +297,4 @@ export async function payStatement(statementId: string, payFromAccountId: string
   revalidatePath(`/cards/${st.card_id}/statements`)
   revalidatePath('/cards')
 }
+
