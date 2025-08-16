@@ -1,18 +1,22 @@
 export const dynamic = 'force-dynamic'
+
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
-import { createCard } from '../actions'
 import IconColorPicker from '@/components/IconColorPicker'
+import { createCard } from '../actions'
 
 export default async function NewCardPage() {
   const supabase = createClient()
   const { data: { user } } = await supabase.auth.getUser()
+
   if (!user) {
     return (
       <main className="p-6">
         <div className="max-w-xl mx-auto bg-white rounded-xl shadow-card p-6">
           <p className="mb-4">Faça login para criar cartões.</p>
-          <Link href="/login" className="px-4 py-2 bg-primary-500 text-white rounded-lg">Ir para login</Link>
+          <Link href="/login" className="px-4 py-2 bg-primary-500 text-white rounded-lg">
+            Ir para login
+          </Link>
         </div>
       </main>
     )
@@ -99,7 +103,7 @@ export default async function NewCardPage() {
             </div>
           </div>
 
-          {/* 🔥 Novo picker client-only que grava nos inputs hidden */}
+          {/* Picker client-only para ícone/cor (salva em inputs hidden) */}
           <IconColorPicker
             defaultIconSlug="FaCreditCard"
             defaultColorHex="#8b5cf6"
@@ -107,7 +111,9 @@ export default async function NewCardPage() {
           />
 
           <div className="pt-2 flex items-center gap-2">
-            <button className="px-4 py-2 bg-primary-500 text-white rounded-lg">Salvar</button>
+            <button type="submit" className="px-4 py-2 bg-primary-500 text-white rounded-lg">
+              Salvar
+            </button>
             <Link href="/cards" className="px-4 py-2 border rounded-lg">Cancelar</Link>
           </div>
         </form>
@@ -115,3 +121,4 @@ export default async function NewCardPage() {
     </main>
   )
 }
+
