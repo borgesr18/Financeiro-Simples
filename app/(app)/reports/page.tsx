@@ -19,14 +19,18 @@ type BudgetRelCat =
 
 type BudgetRow = {
   id: string;
-  planned_amount: number;
-  categories?: BudgetRelCat; // pode vir objeto ou array, dependendo da inferência
+  amount: number; // <- usa coluna real
+  categories?: BudgetRelCat;
 };
+
+function pickCat(cat: BudgetRelCat): { id?: string; name?: string } {
+  if (!cat) return {}
+  return Array.isArray(cat) ? (cat[0] ?? {}) : cat
+}
 
 export default async function ReportsPage({ searchParams }: { searchParams?: Record<string, string> }) {
   const supabase = createClient();
 
-  // Usuário
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) {
     return (
@@ -38,16 +42,15 @@ export default async function ReportsPage({ searchParams }: { searchParams?: Rec
     );
   }
 
-  // Mês selecionado (YYYY-MM)
   const month = (searchParams?.["month"] as string) ?? new Date().toISOString().slice(0, 7);
 
-  // Intervalo de 12 meses p/ gráfico
+  // Intervalo 12 meses
   const now = new Date();
   const start = new Date(now.getFullYear(), now.getMonth() - 11, 1);
   const from = start.toISOString().slice(0, 10);
   const to = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().slice(0, 10);
 
-  // ===== Fluxo Mensal (fallback TS sem RPC) =====
+  // Fluxo Mensal (sem RPC)
   let monthly: { month: string; income: number; expense: number; balance: number }[] = [];
   {
     const { data: txs } = await supabase
@@ -71,7 +74,7 @@ export default async function ReportsPage({ searchParams }: { searchParams?: Rec
       .map(([m, v]) => ({ month: m, income: v.income, expense: v.expense, balance: v.income - v.expense }));
   }
 
-  // ===== Orçamento vs Realizado (mês) =====
+  // BvA do mês
   const y = Number(month.slice(0, 4));
   const m = Number(month.slice(5, 7));
   const monthStart = `${y}-${String(m).padStart(2, "0")}-01`;
@@ -79,7 +82,7 @@ export default async function ReportsPage({ searchParams }: { searchParams?: Rec
 
   const { data: budgetsRaw } = await supabase
     .from("budgets")
-    .select("id, planned_amount, categories:category_id(id, name)")
+    .select("id, amount, categories:category_id(id, name)")
     .eq("year", y)
     .eq("month", m)
     .eq("user_id", user.id);
@@ -96,34 +99,24 @@ export default async function ReportsPage({ searchParams }: { searchParams?: Rec
   const spentByCat = new Map<string, number>();
   for (const t of txMonth ?? []) {
     if (t.type === "expense" && t.category_id) {
-      spentByCat.set(
-        t.category_id,
-        (spentByCat.get(t.category_id) ?? 0) + Math.abs(Number(t.amount || 0))
-      );
+      spentByCat.set(t.category_id, (spentByCat.get(t.category_id) ?? 0) + Math.abs(Number(t.amount || 0)));
     }
-  }
-
-  // Helper: extrai objeto {id,name} mesmo se vier como array
-  function pickCat(cat: BudgetRelCat): { id?: string; name?: string } {
-    if (!cat) return {};
-    return Array.isArray(cat) ? (cat[0] ?? {}) : cat;
   }
 
   const bvaRows = budgets.map((b) => {
     const cat = pickCat(b.categories);
     const catId = cat.id ?? "";
     const spent = spentByCat.get(catId) ?? 0;
-    const amount = Number(b.planned_amount) || 0;
+    const planned = Number(b.amount) || 0;
     return {
       category_id: catId || b.id,
       category_name: cat.name ?? "—",
-      budget: amount,
+      budget: planned,
       actual: spent,
-      diff: amount - spent,
+      diff: planned - spent,
     };
   });
 
-  // Categorias sem orçamento, mas com gasto
   for (const [catId, spent] of spentByCat) {
     const has = budgets.some((b) => {
       const cat = pickCat(b.categories);
