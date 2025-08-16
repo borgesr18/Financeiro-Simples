@@ -1,11 +1,31 @@
 export const dynamic = 'force-dynamic'
-import Link from 'next/link'
-import { notFound } from 'next/navigation'
-import { createClient } from '@/lib/supabase/server'
-import { updateCard } from '../../actions'
-import IconColorPicker from '@/components/IconColorPicker'
 
-export default async function EditCardPage({ params }: { params: { id: string } }) {
+import Link from 'next/link'
+import { notFound, redirect } from 'next/navigation'
+import { createClient } from '@/lib/supabase/server'
+import IconColorPicker from '@/components/IconColorPicker'
+import SubmitButton from '@/components/SubmitButton'
+
+type CardRow = {
+  id: string
+  account_id: string
+  name: string
+  brand: string | null
+  last4: string | null
+  limit_amount: number | null
+  closing_day: number
+  due_day: number
+  institution: string | null
+  color_hex: string | null
+  icon_slug: string | null
+  archived: boolean
+}
+
+export default async function EditCardPage({
+  params,
+}: {
+  params: { id: string }
+}) {
   const supabase = createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) {
@@ -13,34 +33,59 @@ export default async function EditCardPage({ params }: { params: { id: string } 
       <main className="p-6">
         <div className="max-w-xl mx-auto bg-white rounded-xl shadow-card p-6">
           <p className="mb-4">Faça login para editar cartões.</p>
-          <Link href="/login" className="px-4 py-2 bg-primary-500 text-white rounded-lg">Ir para login</Link>
+          <Link href="/login" className="px-4 py-2 bg-primary-500 text-white rounded-lg">
+            Ir para login
+          </Link>
         </div>
       </main>
     )
   }
 
-  const { data } = await supabase
+  // Carrega o cartão
+  const { data, error } = await supabase
     .from('cards')
-    .select('id, name, brand, last4, institution, limit_amount, closing_day, due_day, color_hex, icon_slug, archived')
+    .select('id, account_id, name, brand, last4, limit_amount, closing_day, due_day, institution, color_hex, icon_slug, archived')
     .eq('user_id', user.id)
     .eq('id', params.id)
     .single()
 
-  if (!data) return notFound()
+  if (error || !data) {
+    notFound()
+  }
+  const card = data as CardRow
+
+  // --- wrappers de server actions para injetar o id da rota ---
+  const doUpdate = async (fd: FormData) => {
+    'use server'
+    const { updateCard } = await import('../../actions')
+    await updateCard(params.id, fd)
+  }
+
+  const doArchive = async () => {
+    'use server'
+    const { archiveCard } = await import('../../actions')
+    await archiveCard(params.id)
+    redirect('/cards')
+  }
+  // ------------------------------------------------------------
 
   return (
     <main className="p-6">
       <div className="max-w-2xl mx-auto bg-white rounded-xl shadow-card p-6 space-y-5">
-        <h1 className="text-xl font-semibold">Editar cartão</h1>
+        <div className="flex items-center justify-between">
+          <h1 className="text-xl font-semibold">Editar cartão</h1>
+          <Link href="/cards" className="text-sm text-neutral-600 hover:underline">Voltar</Link>
+        </div>
 
-        <form action={(fd) => updateCard(params.id, fd)} className="space-y-4">
+        <form action={doUpdate} className="space-y-4">
           <div>
             <label className="block text-sm mb-1">Nome</label>
             <input
               name="name"
-              defaultValue={data.name ?? ''}
               required
+              defaultValue={card.name}
               className="w-full px-3 py-2 border rounded-lg bg-neutral-50"
+              placeholder="Cartão Nubank"
             />
           </div>
 
@@ -49,16 +94,18 @@ export default async function EditCardPage({ params }: { params: { id: string } 
               <label className="block text-sm mb-1">Bandeira</label>
               <input
                 name="brand"
-                defaultValue={data.brand ?? ''}
+                defaultValue={card.brand ?? ''}
                 className="w-full px-3 py-2 border rounded-lg bg-neutral-50"
+                placeholder="Visa, Mastercard..."
               />
             </div>
             <div>
               <label className="block text-sm mb-1">Final</label>
               <input
                 name="last4"
-                defaultValue={data.last4 ?? ''}
+                defaultValue={card.last4 ?? ''}
                 className="w-full px-3 py-2 border rounded-lg bg-neutral-50"
+                placeholder="1234"
               />
             </div>
           </div>
@@ -68,18 +115,20 @@ export default async function EditCardPage({ params }: { params: { id: string } 
               <label className="block text-sm mb-1">Instituição</label>
               <input
                 name="institution"
-                defaultValue={data.institution ?? ''}
+                defaultValue={card.institution ?? ''}
                 className="w-full px-3 py-2 border rounded-lg bg-neutral-50"
+                placeholder="Banco emissor"
               />
             </div>
             <div>
               <label className="block text-sm mb-1">Limite (R$)</label>
               <input
                 name="limit_amount"
-                type="number"
+                inputMode="decimal"
                 step="0.01"
-                defaultValue={Number(data.limit_amount ?? 0)}
+                defaultValue={card.limit_amount ?? 0}
                 className="w-full px-3 py-2 border rounded-lg bg-neutral-50"
+                placeholder="ex: 5000"
               />
             </div>
           </div>
@@ -92,7 +141,8 @@ export default async function EditCardPage({ params }: { params: { id: string } 
                 type="number"
                 min={1}
                 max={28}
-                defaultValue={data.closing_day ?? 5}
+                required
+                defaultValue={card.closing_day ?? 5}
                 className="w-full px-3 py-2 border rounded-lg bg-neutral-50"
               />
             </div>
@@ -103,28 +153,31 @@ export default async function EditCardPage({ params }: { params: { id: string } 
                 type="number"
                 min={1}
                 max={28}
-                defaultValue={data.due_day ?? 15}
+                required
+                defaultValue={card.due_day ?? Math.min(28, (card.closing_day ?? 5) + 7)}
                 className="w-full px-3 py-2 border rounded-lg bg-neutral-50"
+                placeholder="ex: 15"
               />
             </div>
           </div>
 
-          {/* 🔥 Picker client-only com valores atuais */}
+          {/* Picker client-only para ícone/cor (escreve nos inputs hidden color_hex/icon_slug) */}
           <IconColorPicker
-            defaultIconSlug={data.icon_slug ?? 'FaCreditCard'}
-            defaultColorHex={data.color_hex ?? '#6b7280'}
-            hint="Altere o ícone e a cor para personalizar este cartão."
+            defaultIconSlug={card.icon_slug ?? 'FaCreditCard'}
+            defaultColorHex={card.color_hex ?? '#8b5cf6'}
+            hint="Escolha um ícone e uma cor para identificar o cartão na interface."
           />
 
-          <label className="inline-flex items-center gap-2 pt-1">
-            <input type="checkbox" name="archived" defaultChecked={!!data.archived} />
-            <span className="text-sm">Arquivado</span>
-          </label>
-
-          <div className="pt-2 flex items-center gap-2">
-            <button className="px-4 py-2 bg-primary-500 text-white rounded-lg">Salvar</button>
+          <div className="flex items-center gap-3 pt-2">
+            <SubmitButton>Salvar</SubmitButton>
             <Link href="/cards" className="px-4 py-2 border rounded-lg">Cancelar</Link>
           </div>
+        </form>
+
+        <form action={doArchive} className="pt-2">
+          <button type="submit" className="text-sm text-red-600 hover:underline">
+            Arquivar cartão
+          </button>
         </form>
       </div>
     </main>
