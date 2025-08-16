@@ -12,10 +12,15 @@ export type BudgetLine = {
 }
 
 // Relacionamento categories pode vir como objeto ou como array
-type RelCat = { id: string; name: string } | { id: string; name: string }[] | null | undefined
+type RelCat =
+  | { id: string; name: string }
+  | { id: string; name: string }[]
+  | null
+  | undefined
+
 type BudgetRow = {
   id: string
-  planned_amount: number
+  amount: number            // <- usa a coluna real do seu schema
   category_id?: string | null
   categories?: RelCat
 }
@@ -38,7 +43,7 @@ export async function getBudgets(year: number, month: number): Promise<BudgetLin
     // Orçamentos do mês
     const { data: budgetsRaw, error: bErr } = await supabase
       .from('budgets')
-      .select('id, planned_amount, category_id, categories:category_id(id, name)')
+      .select('id, amount, category_id, categories:category_id(id, name)')
       .eq('year', year)
       .eq('month', month)
       .eq('user_id', user.id)
@@ -79,15 +84,15 @@ export async function getBudgets(year: number, month: number): Promise<BudgetLin
       const cat = pickCat(b.categories)
       const catId = (b.category_id ?? cat.id ?? '') as string
       const spent = spentByCat.get(catId) ?? 0
-      const amount = Number(b.planned_amount) || 0
+      const planned = Number(b.amount) || 0
 
       lines.push({
         id: b.id,
         category: cat.name ?? '—',
-        amount,
+        amount: planned,
         spent,
-        percent: amount > 0 ? (spent / amount) * 100 : 0,
-        over: amount > 0 && spent > amount,
+        percent: planned > 0 ? (spent / planned) * 100 : 0,
+        over: planned > 0 && spent > planned,
         hasBudget: true,
       })
     }
@@ -114,10 +119,10 @@ export async function getBudgets(year: number, month: number): Promise<BudgetLin
     return lines
   } catch (e) {
     console.error('[lib/budgets] Falha geral:', e)
-    // Propaga para a página decidir como exibir
     throw e
   }
 }
 
-// Compat para quem importa pelo nome antigo
+// Compat com páginas que importam o nome antigo
 export { getBudgets as getBudgetsWithSpend }
+
