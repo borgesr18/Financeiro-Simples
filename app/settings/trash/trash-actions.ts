@@ -1,79 +1,105 @@
-'use server';
+// app/settings/trash/trash-actions.ts
+'use server'
 
-import { createClient } from '@/lib/supabase/server';
-import { revalidatePath, redirect } from 'next/navigation';
+import { createClient } from '@/lib/supabase/server'
+import { revalidatePath } from 'next/cache'   // ✅ aqui é 'next/cache'
+import { redirect } from 'next/navigation'
 
-async function requireUser() {
-  const supabase = createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) throw new Error('Sem sessão');
-  return { supabase, user };
+type Entity =
+  | 'accounts'
+  | 'budgets'
+  | 'categories'
+  | 'goals'
+  | 'transactions'
+  | 'cards'
+
+const ALLOWED: ReadonlySet<Entity> = new Set([
+  'accounts',
+  'budgets',
+  'categories',
+  'goals',
+  'transactions',
+  'cards',
+])
+
+function assertEntity(entity: string | null): asserts entity is Entity {
+  if (!entity || !ALLOWED.has(entity as Entity)) {
+    throw new Error('Entidade inválida para Lixeira')
+  }
 }
 
-// Marca como removida (você pode usar isso nos botões "Excluir" das listagens normais)
-export async function softDeleteAccountAction(fd: FormData) {
-  const { supabase, user } = await requireUser();
-  const id = String(fd.get('id') ?? '');
-  if (!id) throw new Error('ID ausente');
+function getBack(fd: FormData) {
+  return (fd.get('back') as string | null) || '/settings/trash'
+}
 
+/** Envia um item para a Lixeira (soft delete). Requer coluna `deleted_at timestamptz`. */
+export async function softDeleteAction(fd: FormData) {
+  const entity = fd.get('entity') as string | null
+  const id = (fd.get('id') as string | null)?.trim()
+  const back = getBack(fd)
+
+  assertEntity(entity)
+  if (!id) throw new Error('ID ausente')
+
+  const supabase = createClient()
   const { error } = await supabase
-    .from('accounts')
+    .from(entity)
     .update({ deleted_at: new Date().toISOString() })
     .eq('id', id)
-    .eq('user_id', user.id);
 
   if (error) {
-    console.error('[trash:softDeleteAccount]', error);
-    throw new Error('Falha ao enviar conta para a lixeira.');
+    console.error('[trash:softDelete]', { entity, id, error })
+    throw new Error('Falha ao enviar para Lixeira')
   }
 
-  revalidatePath('/banking');
-  revalidatePath('/settings/trash');
-  redirect('/settings/trash');
+  revalidatePath(back)
+  redirect(back)
 }
 
-export async function restoreAccountAction(fd: FormData) {
-  const { supabase, user } = await requireUser();
-  const id = String(fd.get('id') ?? '');
-  if (!id) throw new Error('ID ausente');
+/** Restaura um item da Lixeira. */
+export async function restoreAction(fd: FormData) {
+  const entity = fd.get('entity') as string | null
+  const id = (fd.get('id') as string | null)?.trim()
+  const back = getBack(fd)
 
+  assertEntity(entity)
+  if (!id) throw new Error('ID ausente')
+
+  const supabase = createClient()
   const { error } = await supabase
-    .from('accounts')
+    .from(entity)
     .update({ deleted_at: null })
     .eq('id', id)
-    .eq('user_id', user.id);
 
   if (error) {
-    console.error('[trash:restoreAccount]', error);
-    throw new Error('Falha ao restaurar conta.');
+    console.error('[trash:restore]', { entity, id, error })
+    throw new Error('Falha ao restaurar item')
   }
 
-  revalidatePath('/banking');
-  revalidatePath('/settings/trash');
-  redirect('/banking');
+  revalidatePath(back)
+  redirect(back)
 }
 
-export async function hardDeleteAccountAction(fd: FormData) {
-  const { supabase, user } = await requireUser();
-  const id    = String(fd.get('id') ?? '');
-  const mode  = String(fd.get('mode') ?? 'if-empty'); // 'if-empty' | 'move' | 'purge'
-  const target = (fd.get('target_account_id') as string) || null;
-  if (!id) throw new Error('ID ausente');
+/** Exclusão definitiva (hard delete). */
+export async function purgeAction(fd: FormData) {
+  const entity = fd.get('entity') as string | null
+  const id = (fd.get('id') as string | null)?.trim()
+  const back = getBack(fd)
 
-  // Se você criou a RPC, chame-a (transacional e mais robusta):
-  const { error: eRpc } = await supabase.rpc('hard_delete_account', {
-    p_user_id: user.id,
-    p_account_id: id,
-    p_mode: mode,
-    p_target_account_id: target,
-  });
+  assertEntity(entity)
+  if (!id) throw new Error('ID ausente')
 
-  if (eRpc) {
-    console.error('[trash:hardDeleteAccount] rpc', eRpc);
-    throw new Error(eRpc.message || 'Falha ao excluir definitivamente a conta.');
+  const supabase = createClient()
+  const { error } = await supabase.from(entity).delete().eq('id', id)
+
+  if (error) {
+    console.error('[trash:purge]', { entity, id, error })
+    throw new Error('Falha ao excluir definitivamente')
   }
 
-  revalidatePath('/banking');
-  revalidatePath('/settings/trash');
-  redirect('/settings/trash');
+  revalidatePath(back)
+  redirect(back)
 }
+
+// Alias para compatibilidade com imports existentes
+export const hardDeleteAction = purgeAction
