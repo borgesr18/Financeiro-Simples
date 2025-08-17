@@ -1,8 +1,8 @@
 // app/settings/users/page.tsx
-import Link from 'next/link'
 import { redirect } from 'next/navigation'
+import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
-import { hasAdminKey, getAdminClient } from '@/lib/supabase/admin'
+import { hasAdminKey, createAdminClient } from '@/lib/supabase/admin'
 
 type AdminUser = {
   id: string
@@ -13,32 +13,17 @@ type AdminUser = {
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
 
-async function resolveIsAdmin(userId: string, email: string | null) {
-  // 1) Lista branca por e-mail (env ADMIN_EMAILS)
+// Checagem de admin: por ENV (ADMIN_EMAILS) ou profiles.is_admin = true
+async function isAdmin(userId: string | null, email: string | null) {
   const allow = (process.env.ADMIN_EMAILS || '')
     .split(',')
     .map(s => s.trim().toLowerCase())
     .filter(Boolean)
+
   if (email && allow.includes(email.toLowerCase())) return true
 
-  // 2) Se houver Service Role, consulta direto (sem RLS)
-  if (hasAdminKey()) {
-    try {
-      const admin = getAdminClient()
-      const { data, error } = await admin
-        .from('profiles')
-        .select('is_admin')
-        .eq('id', userId)
-        .maybeSingle()
-      if (!error && data?.is_admin === true) return true
-      if (error) console.error('[users/page] admin check via service role:', error)
-    } catch (e) {
-      console.error('[users/page] admin check (service) ex:', e)
-    }
-  }
-
-  // 3) Fallback via client com RLS (deve conseguir ler o próprio perfil)
   try {
+    if (!userId) return false
     const supabase = createClient()
     const { data, error } = await supabase
       .from('profiles')
@@ -46,25 +31,21 @@ async function resolveIsAdmin(userId: string, email: string | null) {
       .eq('id', userId)
       .maybeSingle()
     if (!error && data?.is_admin === true) return true
-    if (error) console.error('[users/page] admin check via RLS:', error)
-  } catch (e) {
-    console.error('[users/page] admin check (rls) ex:', e)
+  } catch {
+    // se não existir a tabela, a checagem por ENV cobre
   }
-
   return false
 }
 
 export default async function UsersPage() {
   const supabase = createClient()
   const { data: { user } } = await supabase.auth.getUser()
-  if (!user) {
-    redirect('/login')
-  }
+  if (!user) redirect('/login')
 
-  const isAdmin = await resolveIsAdmin(user!.id, user!.email ?? null)
+  const admin = await isAdmin(user.id, user.email ?? null)
 
-  // Não é admin → mostra página amigável (sem redirecionar)
-  if (!isAdmin) {
+  // >>> ajuste: não redireciona; mostra tela de acesso restrito
+  if (!admin) {
     return (
       <main className="p-6">
         <div className="max-w-xl mx-auto bg-white rounded-xl shadow-card p-6">
@@ -76,17 +57,12 @@ export default async function UsersPage() {
             Peça para um administrador adicionar seu e-mail em <code>ADMIN_EMAILS</code> ou marcar{' '}
             <code>profiles.is_admin = true</code>.
           </p>
-          <div className="mt-4">
-            <Link href="/" className="px-3 py-2 rounded-lg border hover:bg-neutral-50">
-              Voltar ao painel
-            </Link>
-          </div>
         </div>
       </main>
     )
   }
 
-  // Se não tiver Service Role configurada, mostra aviso (continua sem quebrar)
+  // Se a Service Role não estiver configurada, evita erro e orienta
   if (!hasAdminKey()) {
     return (
       <main className="p-6 space-y-4">
@@ -94,25 +70,21 @@ export default async function UsersPage() {
           <h1 className="text-xl font-semibold mb-2">Usuários</h1>
           <p className="text-sm text-neutral-600">
             A variável <code>SUPABASE_SERVICE_ROLE_KEY</code> não está configurada neste ambiente.
-            Sem ela, a listagem/gerência de usuários fica desabilitada.
+          </p>
+          <p className="text-sm text-neutral-600">
+            Defina-a nas variáveis de ambiente (apenas no servidor) para listar e administrar usuários.
           </p>
         </div>
       </main>
     )
   }
 
-  // Busca a lista via API admin
+  // Lista usuários direto com o client admin (server-only)
   try {
-    const base = process.env.NEXT_PUBLIC_SITE_URL
-    const url = base ? `${base}/api/admin/users` : '/api/admin/users'
-    const res = await fetch(url, { cache: 'no-store' })
-    if (!res.ok) {
-      const j = await res.json().catch(() => ({}))
-      console.error('[users/page] api error:', j)
-      throw new Error(j?.error ?? 'Falha ao carregar usuários')
-    }
+    const adminClient = createAdminClient()
+    const { data, error } = await adminClient.auth.admin.listUsers()
+    if (error) throw error
 
-    const data = await res.json()
     const users: AdminUser[] = (data?.users ?? []).map((u: any) => ({
       id: u.id,
       email: u.email ?? null,
@@ -139,7 +111,7 @@ export default async function UsersPage() {
                 </tr>
               </thead>
               <tbody>
-                {users.map(u => (
+                {users.map((u) => (
                   <tr key={u.id} className="border-b last:border-0">
                     <td className="py-3 px-4 font-mono text-xs">{u.id}</td>
                     <td className="py-3 px-4">{u.email ?? '—'}</td>
