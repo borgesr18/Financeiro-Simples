@@ -6,30 +6,27 @@ import { createClient } from '@/lib/supabase/server'
 import { formatBRL } from '@/lib/format'
 import { softDeleteAction } from '@/app/settings/trash/actions'
 
-// Tipagem do que esperamos do Supabase
-type BudgetRow = {
-  id: string
-  year: number
-  month: number
-  amount: number
-  category_id: string
-  categories: { name: string } | null
-}
-
+// Helpers de ano/mês
 function clampMonth(y: number, m: number) {
-  // normaliza ano/mês (ex.: 2025/0 => 2024/12)
   const d = new Date(y, m - 1, 1)
   return { y: d.getFullYear(), m: d.getMonth() + 1 }
 }
-
 function prevYM(y: number, m: number) {
   const d = new Date(y, m - 2, 1)
   return { y: d.getFullYear(), m: d.getMonth() + 1 }
 }
-
 function nextYM(y: number, m: number) {
   const d = new Date(y, m, 1)
   return { y: d.getFullYear(), m: d.getMonth() + 1 }
+}
+
+// Linha usada na UI (já com nome da categoria resolvido)
+type UIRow = {
+  id: string
+  year: number
+  month: number
+  amount: number
+  category_name: string
 }
 
 export default async function BudgetPage({
@@ -51,7 +48,7 @@ export default async function BudgetPage({
     )
   }
 
-  // 1) Resolve ano/mês da URL (ou atual)
+  // 1) Ano/mês da URL (ou atual)
   const now = new Date()
   const y0 = Number(searchParams?.y ?? now.getFullYear())
   const m0 = Number(searchParams?.m ?? now.getMonth() + 1)
@@ -61,7 +58,6 @@ export default async function BudgetPage({
     month: 'long',
     year: 'numeric',
   })
-
   const { y: py, m: pm } = prevYM(y, m)
   const { y: ny, m: nm } = nextYM(y, m)
 
@@ -78,7 +74,19 @@ export default async function BudgetPage({
     console.error('[BudgetPage] erro ao carregar budgets:', error)
   }
 
-  const rows = (data ?? []) as BudgetRow[]
+  // 3) Normaliza o shape (categories pode vir como objeto OU array)
+  const rows: UIRow[] = (data ?? []).map((b: any) => {
+    const cat = Array.isArray(b?.categories)
+      ? b.categories[0]
+      : b?.categories
+    return {
+      id: String(b.id),
+      year: Number(b.year),
+      month: Number(b.month),
+      amount: Number(b.amount) || 0,
+      category_name: cat?.name ?? '—',
+    }
+  })
 
   return (
     <main className="p-6 space-y-4">
@@ -125,9 +133,7 @@ export default async function BudgetPage({
             <tbody>
               {rows.map((b) => (
                 <tr key={b.id} className="border-b last:border-0">
-                  <td className="py-3 px-4">
-                    {b.categories?.name ?? '—'}
-                  </td>
+                  <td className="py-3 px-4">{b.category_name}</td>
                   <td className="py-3 px-4">
                     {String(b.month).padStart(2, '0')}/{b.year}
                   </td>
