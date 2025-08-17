@@ -311,3 +311,5 @@ export async function purgeAction(formData: FormData) {
     throw new Error('Falha ao excluir definitivamente')
   }
 }
+// no final de app/settings/trash/actions.ts
+export { purgeAction as hardDeleteAction };
