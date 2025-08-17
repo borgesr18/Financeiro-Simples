@@ -11,7 +11,7 @@ type Entity =
   | 'categories'
   | 'goals'
   | 'transactions'
-  | 'cards' // caso já exista o módulo de cartões
+  | 'cards'
 
 const ALLOWED: ReadonlySet<string> = new Set([
   'accounts',
@@ -60,7 +60,10 @@ export async function restoreAction(fd: FormData) {
   if (!id) throw new Error('ID ausente')
 
   const supabase = createClient()
-  const { error } = await supabase.from(entity).update({ deleted_at: null }).eq('id', id)
+  const { error } = await supabase
+    .from(entity)
+    .update({ deleted_at: null })
+    .eq('id', id)
 
   if (error) {
     console.error('[trash:restore]', { entity, id, error })
@@ -90,3 +93,7 @@ export async function purgeAction(fd: FormData) {
   revalidatePath(back)
   redirect(back)
 }
+
+// ✅ Alias para compatibilidade com páginas que importam "hardDeleteAction"
+export const hardDeleteAction = purgeAction
+
