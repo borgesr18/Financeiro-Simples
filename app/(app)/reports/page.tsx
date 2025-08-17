@@ -1,37 +1,49 @@
 // app/(app)/reports/page.tsx
 export const dynamic = 'force-dynamic'
 
-import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
-import BudgetVsActualTable, { BudgetRow } from '@/components/reports/BudgetVsActualTable'
+import Link from 'next/link'
 import { formatBRL } from '@/lib/format'
 
-type CatObj = { name: string }
-
-// O Supabase pode retornar `categories` como objeto OU como array dependendo do relacionamento.
-// Aceitamos ambos e normalizamos adiante.
-type BudgetRowRaw = {
+type Tx = {
   id: string
-  category_id: string | null
+  date: string // YYYY-MM-DD
   amount: number
-  categories?: CatObj | CatObj[] | null
+  type: 'income' | 'expense' | string
+  category_id: string | null
+  account_id: string
+  deleted_at?: string | null
 }
 
-type TxRow = {
-  id: string
-  date: string
-  amount: number
-  category_id: string | null
-  type: 'expense' | 'income'
-}
+type Category = { id: string; name: string }
+type Account = { id: string; name: string; type: string; archived: boolean }
 
-function getMonthBounds(date = new Date()) {
-  const y = date.getFullYear()
-  const m = date.getMonth() // 0-11
-  const start = new Date(y, m, 1)
-  const end = new Date(y, m + 1, 0)
-  const toISO = (d: Date) => d.toISOString().slice(0, 10)
-  return { year: y, month: m + 1, startISO: toISO(start), endISO: toISO(end) }
+function pad2(n: number) {
+  return String(n).padStart(2, '0')
+}
+function ymdLocal(d: Date) {
+  const y = d.getFullYear()
+  const m = d.getMonth() + 1
+  const day = d.getDate()
+  return `${y}-${pad2(m)}-${pad2(day)}`
+}
+function firstDayOfMonth(d: Date) {
+  return new Date(d.getFullYear(), d.getMonth(), 1)
+}
+function firstDayOfNextMonth(d: Date) {
+  return new Date(d.getFullYear(), d.getMonth() + 1, 1)
+}
+function firstDayMonthsAgo(d: Date, months: number) {
+  return new Date(d.getFullYear(), d.getMonth() - months, 1)
+}
+function monthKey(d: Date | string) {
+  const dt = typeof d === 'string' ? new Date(d + 'T00:00:00') : d
+  return `${dt.getFullYear()}-${pad2(dt.getMonth() + 1)}`
+}
+function monthLabel(key: string) {
+  const [y, m] = key.split('-').map(Number)
+  const labels = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez']
+  return `${labels[(m - 1 + 12) % 12]}/${String(y).slice(-2)}`
 }
 
 export default async function ReportsPage() {
@@ -42,127 +54,355 @@ export default async function ReportsPage() {
     return (
       <main className="p-6">
         <div className="max-w-xl mx-auto bg-white rounded-xl shadow-card p-6">
-          <p className="mb-4">Faça login para ver relatórios.</p>
-          <Link href="/login" className="px-4 py-2 bg-primary-500 text-white rounded-lg">
-            Ir para login
-          </Link>
+          <h1 className="text-xl font-semibold mb-2">Relatórios</h1>
+          <p className="mb-4">Faça login para visualizar seus relatórios.</p>
+          <Link href="/login" className="px-4 py-2 bg-primary-500 text-white rounded-lg">Ir para login</Link>
         </div>
       </main>
     )
   }
 
-  const { year, month, startISO, endISO } = getMonthBounds()
+  // Período "mês atual"
+  const now = new Date()
+  const dtStart = firstDayOfMonth(now)
+  const dtEnd = firstDayOfNextMonth(now)
+  const ano = now.getFullYear()
+  const mesNum = now.getMonth() + 1 // 1..12
 
-  // 1) Budgets do mês atual
-  const { data: budgetsData } = await supabase
-    .from('budgets')
-    .select('id, category_id, amount, categories:category_id(name)')
-    .eq('user_id', user.id)
-    .eq('year', year)
-    .eq('month', month)
+  // Período "últimos 12 meses" (para saldos por conta por mês)
+  const dt12Start = firstDayMonthsAgo(now, 11)
 
-  // Tipamos de forma flexível; normalizamos mais abaixo
-  const budgets = (budgetsData ?? []) as BudgetRowRaw[]
-
-  // 2) Transações do mês atual (agregamos em código)
-  const { data: txData } = await supabase
-    .from('transactions')
-    .select('id, date, amount, category_id, type')
-    .eq('user_id', user.id)
-    .gte('date', startISO)
-    .lte('date', endISO)
-    .limit(5000)
-
-  const txs = (txData ?? []) as TxRow[]
-
-  // Gasto por categoria (somando despesas como positivos)
-  const spentByCat = new Map<string, number>()
-  for (const t of txs) {
-    if (t.amount < 0) {
-      const cid = t.category_id ?? '__none__'
-      const prev = spentByCat.get(cid) ?? 0
-      spentByCat.set(cid, prev + Math.abs(Number(t.amount) || 0))
-    }
-  }
-
-  // Planejado por categoria + nome (normalizando categories como objeto)
-  const plannedByCat = new Map<string, { amount: number; name: string }>()
-  for (const b of budgets) {
-    const cid = b.category_id ?? '__none__'
-    const cat = Array.isArray(b.categories) ? b.categories[0] : b.categories
-    const name = cat?.name ?? '—'
-    const prev = plannedByCat.get(cid)?.amount ?? 0
-    plannedByCat.set(cid, { amount: prev + (Number(b.amount) || 0), name })
-  }
-
-  // Todas as categorias presentes (planejado ou gasto)
-  const allCatIds = new Set<string>([
-    ...Array.from(plannedByCat.keys()),
-    ...Array.from(spentByCat.keys()),
+  // --- Bases auxiliares (nomes) ---
+  const [{ data: categoriesData }, { data: accountsData }] = await Promise.all([
+    supabase.from('categories')
+      .select('id,name')
+      .eq('user_id', user.id)
+      .is('deleted_at', null)
+      .order('name', { ascending: true }),
+    supabase.from('accounts')
+      .select('id,name,type,archived')
+      .eq('user_id', user.id)
   ])
 
-  // Linhas para a tabela
-  const bvaRows: BudgetRow[] = Array.from(allCatIds).map((cid) => {
-    const planned = plannedByCat.get(cid)?.amount ?? 0
-    const name = plannedByCat.get(cid)?.name ?? '—'
-    const spent = spentByCat.get(cid) ?? 0
-    return {
-      category: name,
-      amount: planned,
-      spent,
-      percent: planned > 0 ? (spent / planned) * 100 : undefined,
+  const categories = (categoriesData ?? []) as Category[]
+  const accounts = (accountsData ?? []) as Account[]
+
+  const catName = new Map<string, string>()
+  for (const c of categories) catName.set(c.id, c.name)
+
+  const accName = new Map<string, string>()
+  const accType = new Map<string, string>()
+  for (const a of accounts) {
+    accName.set(a.id, a.name)
+    accType.set(a.id, a.type)
+  }
+
+  // --- Dados de transações do mês atual (usamos para vários blocos) ---
+  const { data: monthTxData, error: monthTxErr } = await supabase
+    .from('transactions')
+    .select('id,date,amount,type,category_id,account_id')
+    .eq('user_id', user.id)
+    .is('deleted_at', null)
+    .gte('date', ymdLocal(dtStart))
+    .lt('date', ymdLocal(dtEnd))
+    .limit(10000)
+
+  if (monthTxErr) {
+    throw new Error('Falha ao carregar transações do mês')
+  }
+  const monthTx = (monthTxData ?? []) as Tx[]
+
+  // --- Dados de transações dos últimos 12 meses (para saldos por conta por mês) ---
+  const { data: tx12Data, error: tx12Err } = await supabase
+    .from('transactions')
+    .select('id,date,amount,account_id')
+    .eq('user_id', user.id)
+    .is('deleted_at', null)
+    .gte('date', ymdLocal(dt12Start))
+    .limit(20000)
+
+  if (tx12Err) {
+    throw new Error('Falha ao carregar transações de 12 meses')
+  }
+  const tx12 = (tx12Data ?? []) as Tx[]
+
+  // --- Orçamentos do mês (para BvA) ---
+  const { data: budgetsData, error: budgetsErr } = await supabase
+    .from('budgets')
+    .select('id,category_id,amount')
+    .eq('user_id', user.id)
+    .is('deleted_at', null)
+    .eq('year', ano)
+    .eq('month', mesNum)
+
+  if (budgetsErr) {
+    throw new Error('Falha ao carregar orçamentos do mês')
+  }
+  const budgets = (budgetsData ?? []) as { id: string; category_id: string; amount: number }[]
+
+  // ---------------------------
+  // 1) Resumo do mês
+  // ---------------------------
+  let receitas = 0
+  let despesas = 0
+  for (const t of monthTx) {
+    if (t.amount > 0) receitas += t.amount
+    else if (t.amount < 0) despesas += -t.amount
+  }
+  const saldoMes = receitas - despesas
+
+  // ---------------------------
+  // 2) Despesas por categoria (período = mês atual)
+  // ---------------------------
+  const byCat = new Map<string, number>() // key = category_id || 'none'
+  for (const t of monthTx) {
+    if (t.amount < 0) {
+      const key = t.category_id ?? 'none'
+      byCat.set(key, (byCat.get(key) ?? 0) + (-t.amount))
     }
-  }).sort((a, b) => (b.spent - b.amount) - (a.spent - a.amount)) // ordena por estouro
+  }
+  const despesasPorCategoria = Array.from(byCat.entries())
+    .map(([cid, total]) => ({
+      category_id: cid === 'none' ? null : cid,
+      category_name: cid === 'none' ? 'Sem categoria' : (catName.get(cid) ?? 'Categoria'),
+      total
+    }))
+    .sort((a, b) => b.total - a.total)
 
-  const monthLabel = new Date(year, month - 1, 1).toLocaleDateString('pt-BR', {
-    month: 'long',
-    year: 'numeric',
-  })
+  // ---------------------------
+  // 3) Orçamento vs Realizado (mês atual)
+  // ---------------------------
+  const spentByCat = new Map<string, number>() // gastos do mês (positivado)
+  for (const t of monthTx) {
+    if (t.amount < 0 && t.category_id) {
+      spentByCat.set(t.category_id, (spentByCat.get(t.category_id) ?? 0) + (-t.amount))
+    }
+  }
+  const bvaRows = budgets.map(b => {
+    const actual = spentByCat.get(b.category_id) ?? 0
+    return {
+      category_id: b.category_id,
+      category_name: catName.get(b.category_id) ?? 'Categoria',
+      budget: b.amount,
+      actual,
+      diff: b.amount - actual,
+    }
+  }).sort((a, b) => a.category_name.localeCompare(b.category_name))
 
-  const totalPlanned = bvaRows.reduce((acc, r) => acc + (r.amount || 0), 0)
-  const totalSpent = bvaRows.reduce((acc, r) => acc + (r.spent || 0), 0)
-  const diff = totalPlanned - totalSpent
+  // ---------------------------
+  // 4) Saldos por conta por mês (na prática: movimento líquido por mês)
+  //    Últimos 12 meses
+  // ---------------------------
+  const MONTHS: string[] = []
+  for (let i = 11; i >= 0; i--) {
+    const d = firstDayMonthsAgo(now, i)
+    MONTHS.push(monthKey(d))
+  }
+
+  type MonthlyRow = { month: string; account_id: string; account_name: string; net: number }
+  const nets = new Map<string, number>() // key = `${monthKey}-${account_id}`
+  for (const t of tx12) {
+    const key = `${monthKey(t.date)}::${t.account_id}`
+    nets.set(key, (nets.get(key) ?? 0) + (t.amount || 0))
+  }
+  const saldosPorContaPorMes: MonthlyRow[] = []
+  for (const m of MONTHS) {
+    for (const a of accounts) {
+      const k = `${m}::${a.id}`
+      const net = nets.get(k) ?? 0
+      // Opcional: pular linhas completamente zeradas para reduzir ruído
+      if (net === 0) continue
+      saldosPorContaPorMes.push({
+        month: m,
+        account_id: a.id,
+        account_name: a.name,
+        net,
+      })
+    }
+  }
+
+  // ---------------------------
+  // 5) Gastos com Cartões (mês atual)
+  // ---------------------------
+  const creditIds = new Set(accounts.filter(a => a.type === 'credit').map(a => a.id))
+  const gastosPorCartao = new Map<string, number>() // account_id -> total gasto (positivo)
+  for (const t of monthTx) {
+    if (t.amount < 0 && creditIds.has(t.account_id)) {
+      gastosPorCartao.set(t.account_id, (gastosPorCartao.get(t.account_id) ?? 0) + (-t.amount))
+    }
+  }
+  const gastosCartoesRows = Array.from(gastosPorCartao.entries())
+    .map(([account_id, total]) => ({
+      account_id,
+      account_name: accName.get(account_id) ?? 'Cartão',
+      total
+    }))
+    .sort((a, b) => b.total - a.total)
+
+  // Labels
+  const monthLabelLong = new Intl.DateTimeFormat('pt-BR', { month: 'long', year: 'numeric' }).format(now)
 
   return (
-    <main className="p-6">
-      <div className="max-w-5xl mx-auto space-y-6">
-        <header className="flex items-start sm:items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-semibold">Relatórios</h1>
-            <p className="text-sm text-neutral-500">Período: {monthLabel}</p>
-          </div>
-          <Link
-            href="/budget"
-            className="px-4 py-2 bg-sky-500 hover:bg-sky-600 text-white rounded-lg"
-          >
-            Ver orçamentos
-          </Link>
-        </header>
+    <main className="p-6 space-y-6">
+      <div className="flex items-start sm:items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-semibold">Relatórios</h1>
+          <p className="text-sm text-neutral-500">Período: {monthLabelLong}</p>
+        </div>
+      </div>
 
-        {/* Resumo do mês */}
-        <section className="bg-white rounded-xl shadow-card p-4 grid grid-cols-1 sm:grid-cols-3 gap-4">
-          <div>
-            <div className="text-xs text-neutral-500">Planejado</div>
-            <div className="text-lg font-semibold">{formatBRL(totalPlanned)}</div>
+      {/* 1) Resumo do mês */}
+      <section className="bg-white rounded-xl shadow-card overflow-hidden">
+        <div className="p-4 border-b bg-neutral-50">
+          <h2 className="text-lg font-semibold">Resumo do mês</h2>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 p-4">
+          <div className="rounded-lg border p-4">
+            <div className="text-sm text-neutral-500">Receitas</div>
+            <div className="text-xl font-semibold text-emerald-600">{formatBRL(receitas)}</div>
           </div>
-          <div>
-            <div className="text-xs text-neutral-500">Gasto</div>
-            <div className="text-lg font-semibold text-rose-600">{formatBRL(totalSpent)}</div>
+          <div className="rounded-lg border p-4">
+            <div className="text-sm text-neutral-500">Despesas</div>
+            <div className="text-xl font-semibold text-rose-600">{formatBRL(despesas)}</div>
           </div>
-          <div>
-            <div className="text-xs text-neutral-500">Diferença</div>
-            <div className={`text-lg font-semibold ${diff >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
-              {formatBRL(diff)}
+          <div className="rounded-lg border p-4">
+            <div className="text-sm text-neutral-500">Saldo</div>
+            <div className={`text-xl font-semibold ${saldoMes >= 0 ? 'text-emerald-700' : 'text-rose-700'}`}>
+              {formatBRL(saldoMes)}
             </div>
           </div>
-        </section>
+        </div>
+      </section>
 
-        {/* Orçamento vs Realizado */}
-        <section>
-          <h2 className="text-lg font-semibold">Orçamento vs Realizado — {monthLabel}</h2>
-          <BudgetVsActualTable rows={bvaRows} />
-        </section>
-      </div>
+      {/* 2) Despesas por categoria (mês) */}
+      <section className="bg-white rounded-xl shadow-card overflow-hidden">
+        <div className="p-4 border-b bg-neutral-50">
+          <h2 className="text-lg font-semibold">Despesas por categoria — {monthLabelLong}</h2>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="min-w-[640px] w-full text-sm">
+            <thead className="bg-neutral-50">
+              <tr className="text-left border-b">
+                <th className="py-3 px-4">Categoria</th>
+                <th className="py-3 px-4 text-right">Total</th>
+              </tr>
+            </thead>
+            <tbody>
+              {despesasPorCategoria.map(row => (
+                <tr key={row.category_id ?? 'none'} className="border-b last:border-0">
+                  <td className="py-3 px-4">{row.category_name}</td>
+                  <td className="py-3 px-4 text-right">{formatBRL(row.total)}</td>
+                </tr>
+              ))}
+              {despesasPorCategoria.length === 0 && (
+                <tr><td colSpan={2} className="py-6 text-center text-neutral-500">Sem despesas neste mês.</td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      {/* 3) Orçamento vs Realizado (mês) */}
+      <section className="bg-white rounded-xl shadow-card overflow-hidden">
+        <div className="p-4 border-b bg-neutral-50">
+          <h2 className="text-lg font-semibold">Orçamento vs Realizado — {monthLabelLong}</h2>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="min-w-[720px] w-full text-sm">
+            <thead className="bg-neutral-50">
+              <tr className="text-left border-b">
+                <th className="py-3 px-4">Categoria</th>
+                <th className="py-3 px-4 text-right">Orçado</th>
+                <th className="py-3 px-4 text-right">Realizado</th>
+                <th className="py-3 px-4 text-right">Diferença</th>
+              </tr>
+            </thead>
+            <tbody>
+              {bvaRows.map(row => {
+                const ok = row.diff >= 0
+                return (
+                  <tr key={row.category_id} className="border-b last:border-0">
+                    <td className="py-3 px-4">{row.category_name}</td>
+                    <td className="py-3 px-4 text-right">{formatBRL(row.budget)}</td>
+                    <td className="py-3 px-4 text-right">{formatBRL(row.actual)}</td>
+                    <td className={`py-3 px-4 text-right ${ok ? 'text-emerald-700' : 'text-rose-700'}`}>{formatBRL(row.diff)}</td>
+                  </tr>
+                )
+              })}
+              {bvaRows.length === 0 && (
+                <tr><td colSpan={4} className="py-6 text-center text-neutral-500">Nenhum orçamento para este mês.</td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      {/* 4) Saldos por conta por mês (net) */}
+      <section className="bg-white rounded-xl shadow-card overflow-hidden">
+        <div className="p-4 border-b bg-neutral-50">
+          <h2 className="text-lg font-semibold">Movimento líquido por conta — últimos 12 meses</h2>
+          <p className="text-xs text-neutral-500 mt-1">
+            *Valor líquido do mês por conta (entradas − saídas). Se quiser que eu mostre saldo acumulado, dá pra calcular também.
+          </p>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="min-w-[820px] w-full text-sm">
+            <thead className="bg-neutral-50">
+              <tr className="text-left border-b">
+                <th className="py-3 px-4">Mês</th>
+                <th className="py-3 px-4">Conta</th>
+                <th className="py-3 px-4 text-right">Líquido</th>
+              </tr>
+            </thead>
+            <tbody>
+              {saldosPorContaPorMes.map((row, idx) => {
+                const pos = row.net >= 0
+                return (
+                  <tr key={idx} className="border-b last:border-0">
+                    <td className="py-3 px-4">{monthLabel(row.month)}</td>
+                    <td className="py-3 px-4">{row.account_name}</td>
+                    <td className={`py-3 px-4 text-right ${pos ? 'text-emerald-700' : 'text-rose-700'}`}>
+                      {formatBRL(row.net)}
+                    </td>
+                  </tr>
+                )
+              })}
+              {saldosPorContaPorMes.length === 0 && (
+                <tr><td colSpan={3} className="py-6 text-center text-neutral-500">Sem movimentos nos últimos 12 meses.</td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      {/* 5) Gastos com Cartões (mês) */}
+      <section className="bg-white rounded-xl shadow-card overflow-hidden">
+        <div className="p-4 border-b bg-neutral-50">
+          <h2 className="text-lg font-semibold">Gastos com Cartões — {monthLabelLong}</h2>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="min-w-[640px] w-full text-sm">
+            <thead className="bg-neutral-50">
+              <tr className="text-left border-b">
+                <th className="py-3 px-4">Cartão</th>
+                <th className="py-3 px-4 text-right">Total gasto</th>
+              </tr>
+            </thead>
+            <tbody>
+              {gastosCartoesRows.map(row => (
+                <tr key={row.account_id} className="border-b last:border-0">
+                  <td className="py-3 px-4">{row.account_name}</td>
+                  <td className="py-3 px-4 text-right">{formatBRL(row.total)}</td>
+                </tr>
+              ))}
+              {gastosCartoesRows.length === 0 && (
+                <tr><td colSpan={2} className="py-6 text-center text-neutral-500">Nenhum gasto com cartões neste mês.</td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </section>
     </main>
   )
 }
+
