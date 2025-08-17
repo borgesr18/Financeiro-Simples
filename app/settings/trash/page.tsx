@@ -1,11 +1,34 @@
 // app/settings/trash/page.tsx
+export const dynamic = 'force-dynamic'
+
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
-import { restoreAction, hardDeleteAction } from './actions'
+import { softDeleteAction, restoreAction, purgeAction as hardDeleteAction } from './actions'
+import { format } from 'date-fns'
+import { ptBR } from 'date-fns/locale'
 
-type Account = { id: string; name: string; type?: string; deleted_at: string | null }
+type Account = { id: string; name: string; type: string; deleted_at: string | null }
 type Simple = { id: string; name: string; deleted_at: string | null }
-type Card = { id: string; name: string; deleted_at: string | null }
+type Tx = { id: string; description: string | null; deleted_at: string | null }
+type Budget = {
+  id: string
+  year: number
+  month: number
+  deleted_at: string | null
+  categories: { name: string }[] | null
+}
+type Goal = { id: string; name: string; deleted_at: string | null }
+type Card = { id: string; label: string | null; last4: string | null; deleted_at: string | null }
+type Investment = { id: string; name: string; deleted_at: string | null }
+
+function fmtWhen(ts: string | null) {
+  if (!ts) return '—'
+  try {
+    return format(new Date(ts), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })
+  } catch {
+    return ts
+  }
+}
 
 export default async function TrashPage() {
   const supabase = createClient()
@@ -16,353 +39,222 @@ export default async function TrashPage() {
       <main className="p-6">
         <div className="max-w-xl mx-auto bg-white rounded-xl shadow-card p-6">
           <p className="mb-4">Faça login para acessar a lixeira.</p>
-          <Link href="/login" className="px-4 py-2 bg-primary-500 text-white rounded-lg">Ir para login</Link>
+          <Link href="/login" className="px-4 py-2 bg-primary-500 text-white rounded-lg">
+            Ir para login
+          </Link>
         </div>
       </main>
     )
   }
 
-  // Busca todos os itens soft-deletados (deleted_at IS NOT NULL)
-  const [
-    accRes,
-    txRes,
-    catRes,
-    budRes,
-    goalRes,
-    cardRes,
-  ] = await Promise.all([
-    supabase.from('accounts')
-      .select('id,name,type,deleted_at')
-      .eq('user_id', user.id)
-      .not('deleted_at', 'is', null)
-      .order('deleted_at', { ascending: false }),
-    supabase.from('transactions')
-      .select('id,description:name,deleted_at') // alias p/ manter {id,name}
-      .eq('user_id', user.id)
-      .not('deleted_at', 'is', null)
-      .order('deleted_at', { ascending: false }),
-    supabase.from('categories')
-      .select('id,name,deleted_at')
-      .eq('user_id', user.id)
-      .not('deleted_at', 'is', null)
-      .order('deleted_at', { ascending: false }),
-    supabase.from('budgets')
-      .select('id,category_id,deleted_at') // não temos "name" direto
-      .eq('user_id', user.id)
-      .not('deleted_at', 'is', null)
-      .order('deleted_at', { ascending: false }),
-    supabase.from('goals')
-      .select('id,name,deleted_at')
-      .eq('user_id', user.id)
-      .not('deleted_at', 'is', null)
-      .order('deleted_at', { ascending: false }),
-    supabase.from('cards')
-      .select('id,name,deleted_at')
-      .eq('user_id', user.id)
-      .not('deleted_at', 'is', null)
-      .order('deleted_at', { ascending: false }),
-  ])
+  // Contas
+  const { data: accounts = [] } = await supabase
+    .from('accounts')
+    .select('id,name,type,deleted_at')
+    .eq('user_id', user.id)
+    .not('deleted_at', 'is', null)
+    .order('deleted_at', { ascending: false }) as { data: Account[] | null }
 
-  const accounts = (accRes.data ?? []) as Account[]
-  const transactions = ((txRes.data ?? []).map((r: any) => ({
-    id: r.id,
-    name: r.name ?? r.description ?? '(sem descrição)',
-    deleted_at: r.deleted_at ?? null,
-  })) as Simple[])
-  const categories = (catRes.data ?? []) as Simple[]
+  // Cartões
+  const { data: cards = [] } = await supabase
+    .from('cards')
+    .select('id,label,last4,deleted_at')
+    .eq('user_id', user.id)
+    .not('deleted_at', 'is', null)
+    .order('deleted_at', { ascending: false }) as { data: Card[] | null }
 
-  // Budgets não tem "name" -> mostramos o id da categoria como identificação
-  const budgets = ((budRes.data ?? []).map((b: any) => ({
-    id: b.id,
-    name: b.category_id ? `Categoria: ${b.category_id}` : '(sem categoria)',
-    deleted_at: b.deleted_at ?? null,
-  })) as Simple[])
+  // Lançamentos
+  const { data: txs = [] } = await supabase
+    .from('transactions')
+    .select('id,description,deleted_at')
+    .eq('user_id', user.id)
+    .not('deleted_at', 'is', null)
+    .order('deleted_at', { ascending: false }) as { data: Tx[] | null }
 
-  const goals = (goalRes.data ?? []) as Simple[]
-  const cards = (cardRes.data ?? []) as Card[]
+  // Categorias
+  const { data: categories = [] } = await supabase
+    .from('categories')
+    .select('id,name,deleted_at')
+    .eq('user_id', user.id)
+    .not('deleted_at', 'is', null)
+    .order('deleted_at', { ascending: false }) as { data: Simple[] | null }
+
+  // Orçamentos
+  const { data: budgets = [] } = await supabase
+    .from('budgets')
+    .select('id,year,month,deleted_at,categories(name)')
+    .eq('user_id', user.id)
+    .not('deleted_at', 'is', null)
+    .order('deleted_at', { ascending: false }) as { data: Budget[] | null }
+
+  // Metas
+  const { data: goals = [] } = await supabase
+    .from('goals')
+    .select('id,name,deleted_at')
+    .eq('user_id', user.id)
+    .not('deleted_at', 'is', null)
+    .order('deleted_at', { ascending: false }) as { data: Goal[] | null }
+
+  // Investimentos (NOVO)
+  const { data: investments = [] } = await supabase
+    .from('investments')
+    .select('id,name,deleted_at')
+    .eq('user_id', user.id)
+    .not('deleted_at', 'is', null)
+    .order('deleted_at', { ascending: false }) as { data: Investment[] | null }
 
   return (
-    <main className="p-6 space-y-6">
+    <main className="p-6 space-y-8">
       <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold">Lixeira</h1>
-          <p className="text-sm text-neutral-500">Restaure itens apagados ou exclua definitivamente.</p>
-        </div>
-        <Link href="/" className="px-3 py-2 rounded-lg border hover:bg-neutral-50">Voltar ao painel</Link>
+        <h1 className="text-2xl font-semibold">Lixeira</h1>
+        <Link href="/settings" className="text-sm text-neutral-500 hover:text-neutral-700">
+          ← Voltar às configurações
+        </Link>
       </div>
 
-      {/* ACCOUNTS */}
-      <section className="bg-white rounded-xl shadow-card overflow-hidden">
-        <header className="px-4 py-3 border-b bg-neutral-50">
-          <h2 className="font-medium">Contas ({accounts.length})</h2>
-        </header>
-        <div className="overflow-x-auto">
-          <table className="min-w-[720px] w-full text-sm">
-            <thead className="bg-neutral-50">
-              <tr className="text-left border-b">
-                <th className="py-2 px-4">Nome</th>
-                <th className="py-2 px-4">Tipo</th>
-                <th className="py-2 px-4">Apagado em</th>
-                <th className="py-2 px-4 text-right">Ações</th>
-              </tr>
-            </thead>
-            <tbody>
-              {accounts.map(a => (
-                <tr key={a.id} className="border-b last:border-0">
-                  <td className="py-2 px-4">{a.name}</td>
-                  <td className="py-2 px-4">{a.type ?? '—'}</td>
-                  <td className="py-2 px-4">{a.deleted_at ? new Date(a.deleted_at).toLocaleString('pt-BR') : '—'}</td>
-                  <td className="py-2 px-4">
-                    <div className="flex justify-end gap-2">
-                      <form action={restoreAction}>
-                        <input type="hidden" name="entity" value="accounts" />
-                        <input type="hidden" name="id" value={a.id} />
-                        <button className="px-3 py-1.5 rounded-lg border hover:bg-neutral-50">Restaurar</button>
-                      </form>
-                      <form action={hardDeleteAction}>
-                        <input type="hidden" name="entity" value="accounts" />
-                        <input type="hidden" name="id" value={a.id} />
-                        <button className="px-3 py-1.5 rounded-lg border border-rose-300 text-rose-600 hover:bg-rose-50">
-                          Excluir definitivamente
-                        </button>
-                      </form>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-              {accounts.length === 0 && (
-                <tr><td colSpan={4} className="py-6 text-center text-neutral-500">Nenhuma conta na lixeira.</td></tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </section>
+      {/* CONTAS */}
+      <Section
+        title="Contas"
+        rows={accounts.map(a => ({
+          id: a.id,
+          primary: a.name,
+          secondary: a.type,
+          when: a.deleted_at,
+          entity: 'accounts' as const,
+        }))}
+      />
 
-      {/* CARDS */}
-      <section className="bg-white rounded-xl shadow-card overflow-hidden">
-        <header className="px-4 py-3 border-b bg-neutral-50">
-          <h2 className="font-medium">Cartões ({cards.length})</h2>
-        </header>
-        <div className="overflow-x-auto">
-          <table className="min-w-[720px] w-full text-sm">
-            <thead className="bg-neutral-50">
-              <tr className="text-left border-b">
-                <th className="py-2 px-4">Nome</th>
-                <th className="py-2 px-4">Apagado em</th>
-                <th className="py-2 px-4 text-right">Ações</th>
-              </tr>
-            </thead>
-            <tbody>
-              {cards.map(c => (
-                <tr key={c.id} className="border-b last:border-0">
-                  <td className="py-2 px-4">{c.name}</td>
-                  <td className="py-2 px-4">{c.deleted_at ? new Date(c.deleted_at).toLocaleString('pt-BR') : '—'}</td>
-                  <td className="py-2 px-4">
-                    <div className="flex justify-end gap-2">
-                      <form action={restoreAction}>
-                        <input type="hidden" name="entity" value="cards" />
-                        <input type="hidden" name="id" value={c.id} />
-                        <button className="px-3 py-1.5 rounded-lg border hover:bg-neutral-50">Restaurar</button>
-                      </form>
-                      <form action={hardDeleteAction}>
-                        <input type="hidden" name="entity" value="cards" />
-                        <input type="hidden" name="id" value={c.id} />
-                        <button className="px-3 py-1.5 rounded-lg border border-rose-300 text-rose-600 hover:bg-rose-50">
-                          Excluir definitivamente
-                        </button>
-                      </form>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-              {cards.length === 0 && (
-                <tr><td colSpan={3} className="py-6 text-center text-neutral-500">Nenhum cartão na lixeira.</td></tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </section>
+      {/* CARTÕES */}
+      <Section
+        title="Cartões"
+        rows={cards.map(c => ({
+          id: c.id,
+          primary: c.label || 'Cartão',
+          secondary: c.last4 ? `**** ${c.last4}` : '—',
+          when: c.deleted_at,
+          entity: 'cards' as const,
+        }))}
+      />
 
-      {/* TRANSACTIONS */}
-      <section className="bg-white rounded-xl shadow-card overflow-hidden">
-        <header className="px-4 py-3 border-b bg-neutral-50">
-          <h2 className="font-medium">Lançamentos ({transactions.length})</h2>
-        </header>
-        <div className="overflow-x-auto">
-          <table className="min-w-[720px] w-full text-sm">
-            <thead className="bg-neutral-50">
-              <tr className="text-left border-b">
-                <th className="py-2 px-4">Descrição</th>
-                <th className="py-2 px-4">Apagado em</th>
-                <th className="py-2 px-4 text-right">Ações</th>
-              </tr>
-            </thead>
-            <tbody>
-              {transactions.map(t => (
-                <tr key={t.id} className="border-b last:border-0">
-                  <td className="py-2 px-4">{t.name}</td>
-                  <td className="py-2 px-4">{t.deleted_at ? new Date(t.deleted_at).toLocaleString('pt-BR') : '—'}</td>
-                  <td className="py-2 px-4">
-                    <div className="flex justify-end gap-2">
-                      <form action={restoreAction}>
-                        <input type="hidden" name="entity" value="transactions" />
-                        <input type="hidden" name="id" value={t.id} />
-                        <button className="px-3 py-1.5 rounded-lg border hover:bg-neutral-50">Restaurar</button>
-                      </form>
-                      <form action={hardDeleteAction}>
-                        <input type="hidden" name="entity" value="transactions" />
-                        <input type="hidden" name="id" value={t.id} />
-                        <button className="px-3 py-1.5 rounded-lg border border-rose-300 text-rose-600 hover:bg-rose-50">
-                          Excluir definitivamente
-                        </button>
-                      </form>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-              {transactions.length === 0 && (
-                <tr><td colSpan={3} className="py-6 text-center text-neutral-500">Nenhum lançamento na lixeira.</td></tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </section>
+      {/* LANÇAMENTOS */}
+      <Section
+        title="Lançamentos"
+        rows={txs.map(t => ({
+          id: t.id,
+          primary: t.description || '(sem descrição)',
+          secondary: '',
+          when: t.deleted_at,
+          entity: 'transactions' as const,
+        }))}
+      />
 
-      {/* CATEGORIES */}
-      <section className="bg-white rounded-xl shadow-card overflow-hidden">
-        <header className="px-4 py-3 border-b bg-neutral-50">
-          <h2 className="font-medium">Categorias ({categories.length})</h2>
-        </header>
-        <div className="overflow-x-auto">
-          <table className="min-w-[720px] w-full text-sm">
-            <thead className="bg-neutral-50">
-              <tr className="text-left border-b">
-                <th className="py-2 px-4">Nome</th>
-                <th className="py-2 px-4">Apagado em</th>
-                <th className="py-2 px-4 text-right">Ações</th>
-              </tr>
-            </thead>
-            <tbody>
-              {categories.map(c => (
-                <tr key={c.id} className="border-b last:border-0">
-                  <td className="py-2 px-4">{c.name}</td>
-                  <td className="py-2 px-4">{c.deleted_at ? new Date(c.deleted_at).toLocaleString('pt-BR') : '—'}</td>
-                  <td className="py-2 px-4">
-                    <div className="flex justify-end gap-2">
-                      <form action={restoreAction}>
-                        <input type="hidden" name="entity" value="categories" />
-                        <input type="hidden" name="id" value={c.id} />
-                        <button className="px-3 py-1.5 rounded-lg border hover:bg-neutral-50">Restaurar</button>
-                      </form>
-                      <form action={hardDeleteAction}>
-                        <input type="hidden" name="entity" value="categories" />
-                        <input type="hidden" name="id" value={c.id} />
-                        <button className="px-3 py-1.5 rounded-lg border border-rose-300 text-rose-600 hover:bg-rose-50">
-                          Excluir definitivamente
-                        </button>
-                      </form>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-              {categories.length === 0 && (
-                <tr><td colSpan={3} className="py-6 text-center text-neutral-500">Nenhuma categoria na lixeira.</td></tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </section>
+      {/* CATEGORIAS */}
+      <Section
+        title="Categorias"
+        rows={categories.map(c => ({
+          id: c.id,
+          primary: c.name,
+          secondary: '',
+          when: c.deleted_at,
+          entity: 'categories' as const,
+        }))}
+      />
 
-      {/* BUDGETS */}
-      <section className="bg-white rounded-xl shadow-card overflow-hidden">
-        <header className="px-4 py-3 border-b bg-neutral-50">
-          <h2 className="font-medium">Orçamentos ({budgets.length})</h2>
-        </header>
-        <div className="overflow-x-auto">
-          <table className="min-w-[720px] w-full text-sm">
-            <thead className="bg-neutral-50">
-              <tr className="text-left border-b">
-                <th className="py-2 px-4">Identificação</th>
-                <th className="py-2 px-4">Apagado em</th>
-                <th className="py-2 px-4 text-right">Ações</th>
-              </tr>
-            </thead>
-            <tbody>
-              {budgets.map(b => (
-                <tr key={b.id} className="border-b last:border-0">
-                  <td className="py-2 px-4">{b.name}</td>
-                  <td className="py-2 px-4">{b.deleted_at ? new Date(b.deleted_at).toLocaleString('pt-BR') : '—'}</td>
-                  <td className="py-2 px-4">
-                    <div className="flex justify-end gap-2">
-                      <form action={restoreAction}>
-                        <input type="hidden" name="entity" value="budgets" />
-                        <input type="hidden" name="id" value={b.id} />
-                        <button className="px-3 py-1.5 rounded-lg border hover:bg-neutral-50">Restaurar</button>
-                      </form>
-                      <form action={hardDeleteAction}>
-                        <input type="hidden" name="entity" value="budgets" />
-                        <input type="hidden" name="id" value={b.id} />
-                        <button className="px-3 py-1.5 rounded-lg border border-rose-300 text-rose-600 hover:bg-rose-50">
-                          Excluir definitivamente
-                        </button>
-                      </form>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-              {budgets.length === 0 && (
-                <tr><td colSpan={3} className="py-6 text-center text-neutral-500">Nenhum orçamento na lixeira.</td></tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </section>
+      {/* ORÇAMENTOS */}
+      <Section
+        title="Orçamentos"
+        rows={budgets.map(b => ({
+          id: b.id,
+          primary: b.categories?.[0]?.name
+            ? `Categoria: ${b.categories[0].name}`
+            : 'Categoria (indefinida)',
+          secondary: `${String(b.month).padStart(2, '0')}/${b.year}`,
+          when: b.deleted_at,
+          entity: 'budgets' as const,
+        }))}
+      />
 
-      {/* GOALS */}
-      <section className="bg-white rounded-xl shadow-card overflow-hidden">
-        <header className="px-4 py-3 border-b bg-neutral-50">
-          <h2 className="font-medium">Metas ({goals.length})</h2>
-        </header>
-        <div className="overflow-x-auto">
-          <table className="min-w-[720px] w-full text-sm">
-            <thead className="bg-neutral-50">
-              <tr className="text-left border-b">
-                <th className="py-2 px-4">Nome</th>
-                <th className="py-2 px-4">Apagado em</th>
-                <th className="py-2 px-4 text-right">Ações</th>
-              </tr>
-            </thead>
-            <tbody>
-              {goals.map(g => (
-                <tr key={g.id} className="border-b last:border-0">
-                  <td className="py-2 px-4">{g.name}</td>
-                  <td className="py-2 px-4">{g.deleted_at ? new Date(g.deleted_at).toLocaleString('pt-BR') : '—'}</td>
-                  <td className="py-2 px-4">
-                    <div className="flex justify-end gap-2">
-                      <form action={restoreAction}>
-                        <input type="hidden" name="entity" value="goals" />
-                        <input type="hidden" name="id" value={g.id} />
-                        <button className="px-3 py-1.5 rounded-lg border hover:bg-neutral-50">Restaurar</button>
-                      </form>
-                      <form action={hardDeleteAction}>
-                        <input type="hidden" name="entity" value="goals" />
-                        <input type="hidden" name="id" value={g.id} />
-                        <button className="px-3 py-1.5 rounded-lg border border-rose-300 text-rose-600 hover:bg-rose-50">
-                          Excluir definitivamente
-                        </button>
-                      </form>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-              {goals.length === 0 && (
-                <tr><td colSpan={3} className="py-6 text-center text-neutral-500">Nenhuma meta na lixeira.</td></tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </section>
+      {/* METAS */}
+      <Section
+        title="Metas"
+        rows={goals.map(g => ({
+          id: g.id,
+          primary: g.name,
+          secondary: '',
+          when: g.deleted_at,
+          entity: 'goals' as const,
+        }))}
+      />
+
+      {/* INVESTIMENTOS (NOVO) */}
+      <Section
+        title="Investimentos"
+        rows={investments.map(i => ({
+          id: i.id,
+          primary: i.name,
+          secondary: '',
+          when: i.deleted_at,
+          entity: 'investments' as const,
+        }))}
+      />
     </main>
   )
 }
 
+function Section({
+  title,
+  rows,
+}: {
+  title: string
+  rows: { id: string; primary: string; secondary: string; when: string | null; entity:
+    | 'accounts' | 'cards' | 'transactions' | 'categories' | 'budgets' | 'goals' | 'investments' }[]
+}) {
+  if (rows.length === 0) return null
+
+  return (
+    <section className="bg-white rounded-xl shadow-card overflow-hidden">
+      <header className="px-4 py-3 border-b bg-neutral-50">
+        <h2 className="text-sm font-semibold">{title}</h2>
+      </header>
+      <div className="overflow-x-auto">
+        <table className="min-w-[720px] w-full text-sm">
+          <thead>
+            <tr className="text-left border-b">
+              <th className="py-3 px-4">Nome</th>
+              <th className="py-3 px-4">Detalhe</th>
+              <th className="py-3 px-4">Excluído em</th>
+              <th className="py-3 px-4 text-right">Ações</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map(r => (
+              <tr key={r.id} className="border-b last:border-0">
+                <td className="py-3 px-4">{r.primary}</td>
+                <td className="py-3 px-4 text-neutral-500">{r.secondary || '—'}</td>
+                <td className="py-3 px-4 text-neutral-500">{fmtWhen(r.when)}</td>
+                <td className="py-3 px-4">
+                  <div className="flex justify-end gap-2">
+                    <form action={restoreAction}>
+                      <input type="hidden" name="entity" value={r.entity} />
+                      <input type="hidden" name="id" value={r.id} />
+                      <button className="px-3 py-1.5 rounded-lg border hover:bg-neutral-50">
+                        Restaurar
+                      </button>
+                    </form>
+                    <form action={hardDeleteAction}>
+                      <input type="hidden" name="entity" value={r.entity} />
+                      <input type="hidden" name="id" value={r.id} />
+                      <button className="px-3 py-1.5 rounded-lg border border-rose-300 text-rose-600 hover:bg-rose-50">
+                        Excluir definitivamente
+                      </button>
+                    </form>
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  )
+}
