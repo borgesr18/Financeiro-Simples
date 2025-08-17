@@ -1,9 +1,9 @@
-// app/settings/trash/actions.ts
+// app/settings/trash/trash-actions.ts
 'use server'
 
-import { redirect } from 'next/navigation'
-import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
+import { revalidatePath } from 'next/cache'
+import { redirect } from 'next/navigation'
 
 type Entity =
   | 'accounts'
@@ -13,7 +13,7 @@ type Entity =
   | 'transactions'
   | 'cards'
 
-const ALLOWED: ReadonlySet<string> = new Set([
+const ALLOWED: ReadonlySet<Entity> = new Set([
   'accounts',
   'budgets',
   'categories',
@@ -23,15 +23,23 @@ const ALLOWED: ReadonlySet<string> = new Set([
 ])
 
 function assertEntity(entity: string | null): asserts entity is Entity {
-  if (!entity || !ALLOWED.has(entity)) {
+  if (!entity || !ALLOWED.has(entity as Entity)) {
     throw new Error('Entidade inválida para Lixeira')
   }
 }
 
+function getBack(fd: FormData) {
+  return (fd.get('back') as string | null) || '/settings/trash'
+}
+
+/**
+ * Envia um item para a Lixeira (soft delete).
+ * Requer coluna `deleted_at timestamptz` na tabela.
+ */
 export async function softDeleteAction(fd: FormData) {
   const entity = fd.get('entity') as string | null
   const id = (fd.get('id') as string | null)?.trim()
-  const back = (fd.get('back') as string | null) || '/settings/trash'
+  const back = getBack(fd)
 
   assertEntity(entity)
   if (!id) throw new Error('ID ausente')
@@ -51,10 +59,13 @@ export async function softDeleteAction(fd: FormData) {
   redirect(back)
 }
 
+/**
+ * Restaura um item da Lixeira.
+ */
 export async function restoreAction(fd: FormData) {
   const entity = fd.get('entity') as string | null
   const id = (fd.get('id') as string | null)?.trim()
-  const back = (fd.get('back') as string | null) || '/settings/trash'
+  const back = getBack(fd)
 
   assertEntity(entity)
   if (!id) throw new Error('ID ausente')
@@ -74,10 +85,13 @@ export async function restoreAction(fd: FormData) {
   redirect(back)
 }
 
+/**
+ * Exclusão definitiva (hard delete).
+ */
 export async function purgeAction(fd: FormData) {
   const entity = fd.get('entity') as string | null
   const id = (fd.get('id') as string | null)?.trim()
-  const back = (fd.get('back') as string | null) || '/settings/trash'
+  const back = getBack(fd)
 
   assertEntity(entity)
   if (!id) throw new Error('ID ausente')
@@ -94,6 +108,6 @@ export async function purgeAction(fd: FormData) {
   redirect(back)
 }
 
-// ✅ Alias para compatibilidade com páginas que importam "hardDeleteAction"
+// Alias para compatibilidade com imports antigos
 export const hardDeleteAction = purgeAction
 
