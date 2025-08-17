@@ -48,60 +48,67 @@ export default async function TrashPage() {
   }
 
   // Contas
-  const { data: accounts = [] } = await supabase
+  const { data: accData } = await supabase
     .from('accounts')
     .select('id,name,type,deleted_at')
     .eq('user_id', user.id)
     .not('deleted_at', 'is', null)
-    .order('deleted_at', { ascending: false }) as { data: Account[] | null }
+    .order('deleted_at', { ascending: false })
+  const accounts: Account[] = accData ?? []
 
   // Cartões
-  const { data: cards = [] } = await supabase
+  const { data: cardData } = await supabase
     .from('cards')
     .select('id,label,last4,deleted_at')
     .eq('user_id', user.id)
     .not('deleted_at', 'is', null)
-    .order('deleted_at', { ascending: false }) as { data: Card[] | null }
+    .order('deleted_at', { ascending: false })
+  const cards: Card[] = cardData ?? []
 
   // Lançamentos
-  const { data: txs = [] } = await supabase
+  const { data: txData } = await supabase
     .from('transactions')
     .select('id,description,deleted_at')
     .eq('user_id', user.id)
     .not('deleted_at', 'is', null)
-    .order('deleted_at', { ascending: false }) as { data: Tx[] | null }
+    .order('deleted_at', { ascending: false })
+  const txs: Tx[] = txData ?? []
 
   // Categorias
-  const { data: categories = [] } = await supabase
+  const { data: catData } = await supabase
     .from('categories')
     .select('id,name,deleted_at')
     .eq('user_id', user.id)
     .not('deleted_at', 'is', null)
-    .order('deleted_at', { ascending: false }) as { data: Simple[] | null }
+    .order('deleted_at', { ascending: false })
+  const categories: Simple[] = catData ?? []
 
   // Orçamentos
-  const { data: budgets = [] } = await supabase
+  const { data: budData } = await supabase
     .from('budgets')
     .select('id,year,month,deleted_at,categories(name)')
     .eq('user_id', user.id)
     .not('deleted_at', 'is', null)
-    .order('deleted_at', { ascending: false }) as { data: Budget[] | null }
+    .order('deleted_at', { ascending: false })
+  const budgets: Budget[] = budData ?? []
 
   // Metas
-  const { data: goals = [] } = await supabase
+  const { data: goalData } = await supabase
     .from('goals')
     .select('id,name,deleted_at')
     .eq('user_id', user.id)
     .not('deleted_at', 'is', null)
-    .order('deleted_at', { ascending: false }) as { data: Goal[] | null }
+    .order('deleted_at', { ascending: false })
+  const goals: Goal[] = goalData ?? []
 
-  // Investimentos (NOVO)
-  const { data: investments = [] } = await supabase
+  // Investimentos
+  const { data: invData } = await supabase
     .from('investments')
     .select('id,name,deleted_at')
     .eq('user_id', user.id)
     .not('deleted_at', 'is', null)
-    .order('deleted_at', { ascending: false }) as { data: Investment[] | null }
+    .order('deleted_at', { ascending: false })
+  const investments: Investment[] = invData ?? []
 
   return (
     <main className="p-6 space-y-8">
@@ -115,7 +122,7 @@ export default async function TrashPage() {
       {/* CONTAS */}
       <Section
         title="Contas"
-        rows={accounts.map(a => ({
+        rows={(accounts ?? []).map(a => ({
           id: a.id,
           primary: a.name,
           secondary: a.type,
@@ -127,7 +134,7 @@ export default async function TrashPage() {
       {/* CARTÕES */}
       <Section
         title="Cartões"
-        rows={cards.map(c => ({
+        rows={(cards ?? []).map(c => ({
           id: c.id,
           primary: c.label || 'Cartão',
           secondary: c.last4 ? `**** ${c.last4}` : '—',
@@ -139,7 +146,7 @@ export default async function TrashPage() {
       {/* LANÇAMENTOS */}
       <Section
         title="Lançamentos"
-        rows={txs.map(t => ({
+        rows={(txs ?? []).map(t => ({
           id: t.id,
           primary: t.description || '(sem descrição)',
           secondary: '',
@@ -151,7 +158,7 @@ export default async function TrashPage() {
       {/* CATEGORIAS */}
       <Section
         title="Categorias"
-        rows={categories.map(c => ({
+        rows={(categories ?? []).map(c => ({
           id: c.id,
           primary: c.name,
           secondary: '',
@@ -163,7 +170,7 @@ export default async function TrashPage() {
       {/* ORÇAMENTOS */}
       <Section
         title="Orçamentos"
-        rows={budgets.map(b => ({
+        rows={(budgets ?? []).map(b => ({
           id: b.id,
           primary: b.categories?.[0]?.name
             ? `Categoria: ${b.categories[0].name}`
@@ -177,7 +184,7 @@ export default async function TrashPage() {
       {/* METAS */}
       <Section
         title="Metas"
-        rows={goals.map(g => ({
+        rows={(goals ?? []).map(g => ({
           id: g.id,
           primary: g.name,
           secondary: '',
@@ -186,10 +193,10 @@ export default async function TrashPage() {
         }))}
       />
 
-      {/* INVESTIMENTOS (NOVO) */}
+      {/* INVESTIMENTOS */}
       <Section
         title="Investimentos"
-        rows={investments.map(i => ({
+        rows={(investments ?? []).map(i => ({
           id: i.id,
           primary: i.name,
           secondary: '',
@@ -206,10 +213,22 @@ function Section({
   rows,
 }: {
   title: string
-  rows: { id: string; primary: string; secondary: string; when: string | null; entity:
-    | 'accounts' | 'cards' | 'transactions' | 'categories' | 'budgets' | 'goals' | 'investments' }[]
+  rows: {
+    id: string
+    primary: string
+    secondary: string
+    when: string | null
+    entity:
+      | 'accounts'
+      | 'cards'
+      | 'transactions'
+      | 'categories'
+      | 'budgets'
+      | 'goals'
+      | 'investments'
+  }[]
 }) {
-  if (rows.length === 0) return null
+  if (!rows || rows.length === 0) return null
 
   return (
     <section className="bg-white rounded-xl shadow-card overflow-hidden">
