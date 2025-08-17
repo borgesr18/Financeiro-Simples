@@ -3,11 +3,20 @@
 import { createClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
 
-type Entity = 'accounts' | 'transactions' | 'categories' | 'budgets' | 'goals'
+type Entity =
+  | 'accounts'
+  | 'transactions'
+  | 'categories'
+  | 'budgets'
+  | 'goals'
+  | 'cards' // 👈 incluído
 
 async function requireUser() {
   const supabase = createClient()
-  const { data: { user }, error } = await supabase.auth.getUser()
+  const {
+    data: { user },
+    error,
+  } = await supabase.auth.getUser()
   if (error || !user) {
     throw new Error('Não autenticado')
   }
@@ -35,9 +44,7 @@ export async function softDeleteAction(formData: FormData) {
           .update({ deleted_at: now })
           .eq('id', id)
           .eq('user_id', user.id)
-
         if (error) throw error
-        // Atualiza listagens
         revalidatePath('/banking')
         revalidatePath('/settings/trash')
         return
@@ -49,7 +56,6 @@ export async function softDeleteAction(formData: FormData) {
           .update({ deleted_at: now })
           .eq('id', id)
           .eq('user_id', user.id)
-
         if (error) throw error
         revalidatePath('/transactions')
         revalidatePath('/settings/trash')
@@ -62,7 +68,6 @@ export async function softDeleteAction(formData: FormData) {
           .update({ deleted_at: now })
           .eq('id', id)
           .eq('user_id', user.id)
-
         if (error) throw error
         revalidatePath('/settings/categories')
         revalidatePath('/settings/trash')
@@ -75,7 +80,6 @@ export async function softDeleteAction(formData: FormData) {
           .update({ deleted_at: now })
           .eq('id', id)
           .eq('user_id', user.id)
-
         if (error) throw error
         revalidatePath('/budget')
         revalidatePath('/settings/trash')
@@ -88,9 +92,20 @@ export async function softDeleteAction(formData: FormData) {
           .update({ deleted_at: now })
           .eq('id', id)
           .eq('user_id', user.id)
-
         if (error) throw error
         revalidatePath('/goals')
+        revalidatePath('/settings/trash')
+        return
+      }
+
+      case 'cards': {
+        const { error } = await supabase
+          .from('cards')
+          .update({ deleted_at: now })
+          .eq('id', id)
+          .eq('user_id', user.id)
+        if (error) throw error
+        revalidatePath('/cards')
         revalidatePath('/settings/trash')
         return
       }
@@ -123,7 +138,6 @@ export async function restoreAction(formData: FormData) {
           .update({ deleted_at: null })
           .eq('id', id)
           .eq('user_id', user.id)
-
         if (error) throw error
         revalidatePath('/banking')
         revalidatePath('/settings/trash')
@@ -136,7 +150,6 @@ export async function restoreAction(formData: FormData) {
           .update({ deleted_at: null })
           .eq('id', id)
           .eq('user_id', user.id)
-
         if (error) throw error
         revalidatePath('/transactions')
         revalidatePath('/settings/trash')
@@ -149,7 +162,6 @@ export async function restoreAction(formData: FormData) {
           .update({ deleted_at: null })
           .eq('id', id)
           .eq('user_id', user.id)
-
         if (error) throw error
         revalidatePath('/settings/categories')
         revalidatePath('/settings/trash')
@@ -162,7 +174,6 @@ export async function restoreAction(formData: FormData) {
           .update({ deleted_at: null })
           .eq('id', id)
           .eq('user_id', user.id)
-
         if (error) throw error
         revalidatePath('/budget')
         revalidatePath('/settings/trash')
@@ -175,9 +186,20 @@ export async function restoreAction(formData: FormData) {
           .update({ deleted_at: null })
           .eq('id', id)
           .eq('user_id', user.id)
-
         if (error) throw error
         revalidatePath('/goals')
+        revalidatePath('/settings/trash')
+        return
+      }
+
+      case 'cards': {
+        const { error } = await supabase
+          .from('cards')
+          .update({ deleted_at: null })
+          .eq('id', id)
+          .eq('user_id', user.id)
+        if (error) throw error
+        revalidatePath('/cards')
         revalidatePath('/settings/trash')
         return
       }
@@ -193,8 +215,9 @@ export async function restoreAction(formData: FormData) {
 
 /**
  * Purga (exclui definitivamente) um item da lixeira.
- * Para ACCOUNTS: apaga primeiro os TRANSACTIONS daquela conta e só depois a conta,
- * evitando violação de FK (erro 23503).
+ * ACCOUNTS: apaga primeiro TRANSACTIONS daquela conta (evita FK 23503).
+ * CATEGORIES: tenta desassociar transações; se não for permitido, apaga-as.
+ * CARDS: tenta desreferenciar card_id em transactions e apagar faturas, se houver.
  * Campos esperados no FormData: entity, id
  */
 export async function purgeAction(formData: FormData) {
@@ -207,22 +230,20 @@ export async function purgeAction(formData: FormData) {
   try {
     switch (entity) {
       case 'accounts': {
-        // 1) Apaga todos os lançamentos dessa conta (do próprio usuário)
+        // 1) Apaga lançamentos dessa conta
         const { error: txErr } = await supabase
           .from('transactions')
           .delete()
           .eq('user_id', user.id)
           .eq('account_id', id)
-
         if (txErr) throw txErr
 
-        // 2) Agora pode apagar a conta
+        // 2) Apaga a conta
         const { error: accErr } = await supabase
           .from('accounts')
           .delete()
           .eq('id', id)
           .eq('user_id', user.id)
-
         if (accErr) throw accErr
 
         revalidatePath('/banking')
@@ -236,7 +257,6 @@ export async function purgeAction(formData: FormData) {
           .delete()
           .eq('id', id)
           .eq('user_id', user.id)
-
         if (error) throw error
         revalidatePath('/transactions')
         revalidatePath('/settings/trash')
@@ -244,7 +264,7 @@ export async function purgeAction(formData: FormData) {
       }
 
       case 'categories': {
-        // Se sua FK permitir NULL, desassocia as transações antes
+        // Tenta remover referência primeiro
         const { error: unsetErr } = await supabase
           .from('transactions')
           .update({ category_id: null })
@@ -252,7 +272,7 @@ export async function purgeAction(formData: FormData) {
           .eq('category_id', id)
 
         if (unsetErr) {
-          // Se não permitir, apaga as transações dessa categoria
+          // Se a FK não permitir NULL, remove as transações dessa categoria
           const { error: delTx } = await supabase
             .from('transactions')
             .delete()
@@ -266,8 +286,8 @@ export async function purgeAction(formData: FormData) {
           .delete()
           .eq('id', id)
           .eq('user_id', user.id)
-
         if (error) throw error
+
         revalidatePath('/settings/categories')
         revalidatePath('/settings/trash')
         return
@@ -279,7 +299,6 @@ export async function purgeAction(formData: FormData) {
           .delete()
           .eq('id', id)
           .eq('user_id', user.id)
-
         if (error) throw error
         revalidatePath('/budget')
         revalidatePath('/settings/trash')
@@ -292,9 +311,46 @@ export async function purgeAction(formData: FormData) {
           .delete()
           .eq('id', id)
           .eq('user_id', user.id)
-
         if (error) throw error
         revalidatePath('/goals')
+        revalidatePath('/settings/trash')
+        return
+      }
+
+      case 'cards': {
+        // 0) Se houver tabela de faturas (card_statements), tenta limpar
+        const delStatements = await supabase
+          .from('card_statements')
+          .delete()
+          .eq('user_id', user.id)
+          .eq('card_id', id)
+
+        // Ignora caso a tabela não exista
+        if (delStatements.error && delStatements.error.code !== '42P01') {
+          throw delStatements.error
+        }
+
+        // 1) Desassocia transações referenciando o cartão (se a coluna existir)
+        const unsetTx = await supabase
+          .from('transactions')
+          .update({ card_id: null })
+          .eq('user_id', user.id)
+          .eq('card_id', id)
+
+        // Se a coluna não existir (42703), ignora; outros erros, lança
+        if (unsetTx.error && unsetTx.error.code !== '42703') {
+          throw unsetTx.error
+        }
+
+        // 2) Apaga o cartão
+        const { error } = await supabase
+          .from('cards')
+          .delete()
+          .eq('id', id)
+          .eq('user_id', user.id)
+        if (error) throw error
+
+        revalidatePath('/cards')
         revalidatePath('/settings/trash')
         return
       }
@@ -304,12 +360,13 @@ export async function purgeAction(formData: FormData) {
     }
   } catch (err: any) {
     console.error('[trash-actions] purgeAction supabase error:', err)
-    // Mensagem mais amigável se for FK
     if (err?.code === '23503') {
       throw new Error('Não foi possível excluir definitivamente: existem registros relacionados.')
     }
     throw new Error('Falha ao excluir definitivamente')
   }
 }
-// no final de app/settings/trash/actions.ts
-export { purgeAction as hardDeleteAction };
+
+// Alias compatível com chamadas antigas
+export { purgeAction as hardDeleteAction }
+
