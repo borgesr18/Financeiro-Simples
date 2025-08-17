@@ -4,6 +4,8 @@ import Link from 'next/link'
 import { Inter } from 'next/font/google'
 import './globals.css'
 
+import UserMiniCard from '@/components/UserMiniCard'
+
 import {
   FaWallet,
   FaHouse,
@@ -17,9 +19,10 @@ import {
   FaBars,
   FaBell,
   FaPlus,
-  FaMagnifyingGlass,
-  FaGear,
+  FaMagnifyingGlass, // substitui o antigo FaSearch
+  FaGear,            // substitui o antigo FaCog
   FaTrashCan,
+  FaUsers,
 } from 'react-icons/fa6'
 
 const inter = Inter({ subsets: ['latin'], variable: '--font-inter' })
@@ -29,13 +32,15 @@ export const metadata: Metadata = {
   description: 'Controle financeiro simples com Next.js + Supabase',
 }
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default function RootLayout({
+  children,
+}: {
+  children: React.ReactNode
+}) {
   return (
-    <html lang="pt-BR" className={`${inter.variable}`}>
-      {/* body ocupa 100% da viewport e TRAVA o scroll global */}
-      <body className="h-dvh h-screen overflow-hidden bg-neutral-50 text-neutral-800 font-sans">
-        {/* wrapper com altura fixa da viewport */}
-        <div className="flex h-dvh h-screen">
+    <html lang="pt-BR" className={`${inter.variable} h-full`}>
+      <body className="min-h-dvh min-h-screen bg-neutral-50 text-neutral-800 font-sans">
+        <div className="flex min-h-dvh min-h-screen">
           {/* Sidebar */}
           <aside className="hidden md:flex md:flex-col w-64 bg-white border-r border-neutral-200">
             {/* Logo */}
@@ -46,7 +51,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               <h1 className="text-xl font-semibold text-neutral-800">FinTrack</h1>
             </div>
 
-            {/* Navegação — a própria sidebar rola se precisar */}
+            {/* Navegação */}
             <nav className="flex-1 overflow-y-auto p-3">
               {/* Principal */}
               <div className="mb-6">
@@ -171,42 +176,39 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                       Categorias
                     </Link>
                   </li>
-<li className="mb-1">
-    <Link
-      href="/settings/trash"
-      className="flex items-center px-3 py-2 rounded-lg text-neutral-600 hover:bg-neutral-50 font-medium"
-    >
-      <FaTrashCan className="w-5 mr-2" />
-      Lixeira
-    </Link>
-  </li>
+                  <li className="mb-1">
+                    <Link
+                      href="/settings/trash"
+                      className="flex items-center px-3 py-2 rounded-lg text-neutral-600 hover:bg-neutral-50 font-medium"
+                    >
+                      <FaTrashCan className="w-5 mr-2" />
+                      Lixeira
+                    </Link>
+                  </li>
+                  <li className="mb-1">
+                    <Link
+                      href="/settings/users"
+                      className="flex items-center px-3 py-2 rounded-lg text-neutral-600 hover:bg-neutral-50 font-medium"
+                    >
+                      <FaUsers className="w-5 mr-2" />
+                      Usuários
+                    </Link>
+                  </li>
                 </ul>
               </div>
             </nav>
 
-            {/* Usuário (placeholder) */}
+            {/* Usuário logado / admin badge */}
             <div className="p-4 border-t border-neutral-100">
-              <div className="flex items-center">
-                <img
-                  src="https://storage.googleapis.com/uxpilot-auth.appspot.com/avatars/avatar-1.jpg"
-                  alt="Avatar"
-                  className="w-9 h-9 rounded-full mr-3"
-                />
-                <div>
-                  <p className="text-sm font-medium text-neutral-800">Usuário</p>
-                  <p className="text-xs text-neutral-500">usuario@example.com</p>
-                </div>
-                <button className="ml-auto text-neutral-400 hover:text-neutral-600">
-                  <FaGear />
-                </button>
-              </div>
+              <UserMiniCard />
             </div>
           </aside>
 
-          {/* Conteúdo principal (coluna) */}
+          {/* Conteúdo principal */}
           <div className="flex-1 flex flex-col min-h-0">
-            {/* Header fixo dentro do layout */}
+            {/* Header */}
             <header className="bg-white border-b border-neutral-200 p-4 flex items-center justify-between">
+              {/* Botão menu mobile */}
               <button className="md:hidden text-neutral-500 hover:text-neutral-700">
                 <FaBars className="text-xl" />
               </button>
@@ -227,6 +229,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                 </div>
               </div>
 
+              {/* Ações à direita */}
               <div className="flex items-center space-x-3">
                 <button className="p-2 text-neutral-500 hover:text-neutral-700 hover:bg-neutral-50 rounded-full">
                   <FaBell />
@@ -241,7 +244,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               </div>
             </header>
 
-            {/* 🔥 ÚNICA área rolável do app */}
+            {/* Área rolável das páginas */}
             <div className="flex-1 min-h-0 overflow-y-auto">
               {children}
             </div>
