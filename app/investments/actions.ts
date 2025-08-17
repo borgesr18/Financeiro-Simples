@@ -1,78 +1,84 @@
 'use server'
 
+import { createClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
-import { createClient } from '@/lib/supabase/server'
-import { isRedirectError } from 'next/dist/client/components/redirect'
 
-function num(v: FormDataEntryValue | null, fb = 0) {
+function requireField(v: FormDataEntryValue | null, name: string) {
   const s = (v ?? '').toString().trim()
-  if (!s) return fb
-  // aceita "1.234,56" e "1234.56"
-  const norm = s.replace(/\./g, '').replace(',', '.')
-  const n = Number(norm)
-  return Number.isFinite(n) ? n : fb
-}
-const str = (v: FormDataEntryValue | null) => {
-  const s = (v ?? '').toString().trim()
-  return s || null
+  if (!s) throw new Error(`Campo obrigatório: ${name}`)
+  return s
 }
 
-export async function createAsset(fd: FormData) {
+export async function createInvestment(formData: FormData) {
   const supabase = createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) throw new Error('Sem usuário')
+  const { data: { user }, error: authErr } = await supabase.auth.getUser()
+  if (authErr || !user) throw new Error('Não autenticado')
 
-  try {
-    const ticker = (fd.get('ticker') ?? '').toString().trim().toUpperCase()
-    if (!ticker) throw new Error('Ticker é obrigatório')
-    const name = str(fd.get('name'))
-    const klass = (fd.get('class') ?? 'stock').toString()
-    const currency = (fd.get('currency') ?? 'BRL').toString()
+  const name = requireField(formData.get('name'), 'Nome')
+  const type = (formData.get('type') ?? 'other').toString()
+  const institution = (formData.get('institution') ?? '').toString() || null
+  const currency = (formData.get('currency') ?? 'BRL').toString()
+  const color_hex = (formData.get('color_hex') ?? '').toString() || null
+  const icon_slug = (formData.get('icon_slug') ?? '').toString() || null
+  const notes = (formData.get('notes') ?? '').toString() || null
 
-    const { error } = await supabase.from('assets').insert({
+  const { error } = await supabase
+    .from('investments')
+    .insert({
       user_id: user.id,
-      ticker, name, class: klass, currency
+      name,
+      type,
+      institution,
+      currency,
+      color_hex,
+      icon_slug,
+      notes,
     })
-    if (error) throw error
-  } catch (e) {
-    if (isRedirectError(e)) throw e
-    console.error('[investments:createAsset]', e)
-    throw new Error('Falha ao criar ativo')
+
+  if (error) {
+    console.error('[investments:create] supabase error:', error)
+    throw new Error('Falha ao criar investimento')
   }
+
   revalidatePath('/investments')
   redirect('/investments')
 }
 
-export async function createTrade(fd: FormData) {
+export async function updateInvestment(formData: FormData) {
   const supabase = createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) throw new Error('Sem usuário')
+  const { data: { user }, error: authErr } = await supabase.auth.getUser()
+  if (authErr || !user) throw new Error('Não autenticado')
 
-  try {
-    const date = (fd.get('date') ?? '').toString()
-    const side = (fd.get('side') ?? 'buy').toString() as 'buy'|'sell'
-    const account_id = (fd.get('account_id') ?? '').toString()
-    const asset_id = (fd.get('asset_id') ?? '').toString()
-    const quantity = num(fd.get('quantity'), 0)
-    const price = num(fd.get('price'), 0)
-    const fees = num(fd.get('fees'), 0)
-    const notes = str(fd.get('notes'))
+  const id = requireField(formData.get('id'), 'ID')
+  const name = requireField(formData.get('name'), 'Nome')
+  const type = (formData.get('type') ?? 'other').toString()
+  const institution = (formData.get('institution') ?? '').toString() || null
+  const currency = (formData.get('currency') ?? 'BRL').toString()
+  const color_hex = (formData.get('color_hex') ?? '').toString() || null
+  const icon_slug = (formData.get('icon_slug') ?? '').toString() || null
+  const notes = (formData.get('notes') ?? '').toString() || null
 
-    if (!date || !account_id || !asset_id || quantity <= 0) {
-      throw new Error('Preencha data, conta, ativo e quantidade > 0')
-    }
-
-    const { error } = await supabase.from('investment_trades').insert({
-      user_id: user.id,
-      date, side, account_id, asset_id, quantity, price, fees, notes
+  const { error } = await supabase
+    .from('investments')
+    .update({
+      name,
+      type,
+      institution,
+      currency,
+      color_hex,
+      icon_slug,
+      notes,
     })
-    if (error) throw error
-  } catch (e) {
-    if (isRedirectError(e)) throw e
-    console.error('[investments:createTrade]', e)
-    throw new Error('Falha ao lançar operação')
+    .eq('id', id)
+    .eq('user_id', user.id)
+
+  if (error) {
+    console.error('[investments:update] supabase error:', error)
+    throw new Error('Falha ao atualizar investimento')
   }
+
   revalidatePath('/investments')
   redirect('/investments')
 }
+
