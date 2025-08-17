@@ -3,13 +3,13 @@ export const dynamic = 'force-dynamic'
 
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
-import { softDeleteAction, restoreAction, purgeAction as hardDeleteAction } from './actions'
+import { restoreAction, hardDeleteAction } from './actions'
 import { format } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
 
 type Account = { id: string; name: string; type: string; deleted_at: string | null }
-type Simple = { id: string; name: string; deleted_at: string | null }
 type Tx = { id: string; description: string | null; deleted_at: string | null }
+type Category = { id: string; name: string; deleted_at: string | null }
 type Budget = {
   id: string
   year: number
@@ -72,7 +72,7 @@ export default async function TrashPage() {
     .eq('user_id', user.id)
     .not('deleted_at', 'is', null)
     .order('deleted_at', { ascending: false })
-  const txs: Tx[] = txData ?? []
+  const transactions: Tx[] = txData ?? []
 
   // Categorias
   const { data: catData } = await supabase
@@ -81,7 +81,7 @@ export default async function TrashPage() {
     .eq('user_id', user.id)
     .not('deleted_at', 'is', null)
     .order('deleted_at', { ascending: false })
-  const categories: Simple[] = catData ?? []
+  const categories: Category[] = catData ?? []
 
   // Orçamentos
   const { data: budData } = await supabase
@@ -110,6 +110,15 @@ export default async function TrashPage() {
     .order('deleted_at', { ascending: false })
   const investments: Investment[] = invData ?? []
 
+  const totalCount =
+    accounts.length +
+    cards.length +
+    transactions.length +
+    categories.length +
+    budgets.length +
+    goals.length +
+    investments.length
+
   return (
     <main className="p-6 space-y-8">
       <div className="flex items-center justify-between">
@@ -119,10 +128,15 @@ export default async function TrashPage() {
         </Link>
       </div>
 
-      {/* CONTAS */}
+      {totalCount === 0 && (
+        <div className="bg-white rounded-xl shadow-card p-6">
+          <p className="text-neutral-600">Nenhum item na lixeira.</p>
+        </div>
+      )}
+
       <Section
         title="Contas"
-        rows={(accounts ?? []).map(a => ({
+        rows={accounts.map(a => ({
           id: a.id,
           primary: a.name,
           secondary: a.type,
@@ -131,10 +145,9 @@ export default async function TrashPage() {
         }))}
       />
 
-      {/* CARTÕES */}
       <Section
         title="Cartões"
-        rows={(cards ?? []).map(c => ({
+        rows={cards.map(c => ({
           id: c.id,
           primary: c.label || 'Cartão',
           secondary: c.last4 ? `**** ${c.last4}` : '—',
@@ -143,10 +156,9 @@ export default async function TrashPage() {
         }))}
       />
 
-      {/* LANÇAMENTOS */}
       <Section
         title="Lançamentos"
-        rows={(txs ?? []).map(t => ({
+        rows={transactions.map(t => ({
           id: t.id,
           primary: t.description || '(sem descrição)',
           secondary: '',
@@ -155,10 +167,9 @@ export default async function TrashPage() {
         }))}
       />
 
-      {/* CATEGORIAS */}
       <Section
         title="Categorias"
-        rows={(categories ?? []).map(c => ({
+        rows={categories.map(c => ({
           id: c.id,
           primary: c.name,
           secondary: '',
@@ -167,10 +178,9 @@ export default async function TrashPage() {
         }))}
       />
 
-      {/* ORÇAMENTOS */}
       <Section
         title="Orçamentos"
-        rows={(budgets ?? []).map(b => ({
+        rows={budgets.map(b => ({
           id: b.id,
           primary: b.categories?.[0]?.name
             ? `Categoria: ${b.categories[0].name}`
@@ -181,10 +191,9 @@ export default async function TrashPage() {
         }))}
       />
 
-      {/* METAS */}
       <Section
         title="Metas"
-        rows={(goals ?? []).map(g => ({
+        rows={goals.map(g => ({
           id: g.id,
           primary: g.name,
           secondary: '',
@@ -193,10 +202,9 @@ export default async function TrashPage() {
         }))}
       />
 
-      {/* INVESTIMENTOS */}
       <Section
         title="Investimentos"
-        rows={(investments ?? []).map(i => ({
+        rows={investments.map(i => ({
           id: i.id,
           primary: i.name,
           secondary: '',
@@ -277,4 +285,5 @@ function Section({
     </section>
   )
 }
+
 
