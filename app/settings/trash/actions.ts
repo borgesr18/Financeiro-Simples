@@ -1,4 +1,3 @@
-// app/settings/trash/actions.ts
 'use server'
 
 import { createClient } from '@/lib/supabase/server'
@@ -11,15 +10,21 @@ type Entity =
   | 'budgets'
   | 'goals'
   | 'cards'
+  | 'investments'
 
 async function requireUser() {
   const supabase = createClient()
   const { data: { user }, error } = await supabase.auth.getUser()
-  if (error || !user) throw new Error('Não autenticado')
+  if (error || !user) {
+    throw new Error('Não autenticado')
+  }
   return { supabase, user }
 }
 
-/** Soft delete (manda para a lixeira): seta deleted_at = now() */
+/**
+ * Envia um item para a lixeira (soft delete: seta deleted_at = now()).
+ * Campos esperados no FormData: entity, id
+ */
 export async function softDeleteAction(formData: FormData) {
   const { supabase, user } = await requireUser()
   const entity = String(formData.get('entity') || '') as Entity
@@ -42,6 +47,7 @@ export async function softDeleteAction(formData: FormData) {
         revalidatePath('/settings/trash')
         return
       }
+
       case 'transactions': {
         const { error } = await supabase
           .from('transactions')
@@ -53,6 +59,7 @@ export async function softDeleteAction(formData: FormData) {
         revalidatePath('/settings/trash')
         return
       }
+
       case 'categories': {
         const { error } = await supabase
           .from('categories')
@@ -64,6 +71,7 @@ export async function softDeleteAction(formData: FormData) {
         revalidatePath('/settings/trash')
         return
       }
+
       case 'budgets': {
         const { error } = await supabase
           .from('budgets')
@@ -75,6 +83,7 @@ export async function softDeleteAction(formData: FormData) {
         revalidatePath('/settings/trash')
         return
       }
+
       case 'goals': {
         const { error } = await supabase
           .from('goals')
@@ -86,6 +95,7 @@ export async function softDeleteAction(formData: FormData) {
         revalidatePath('/settings/trash')
         return
       }
+
       case 'cards': {
         const { error } = await supabase
           .from('cards')
@@ -97,6 +107,19 @@ export async function softDeleteAction(formData: FormData) {
         revalidatePath('/settings/trash')
         return
       }
+
+      case 'investments': {
+        const { error } = await supabase
+          .from('investments')
+          .update({ deleted_at: now })
+          .eq('id', id)
+          .eq('user_id', user.id)
+        if (error) throw error
+        revalidatePath('/investments')
+        revalidatePath('/settings/trash')
+        return
+      }
+
       default:
         throw new Error('Entidade desconhecida')
     }
@@ -106,7 +129,10 @@ export async function softDeleteAction(formData: FormData) {
   }
 }
 
-/** Restore: deleted_at = null */
+/**
+ * Restaura um item da lixeira (deleted_at = null).
+ * Campos esperados no FormData: entity, id
+ */
 export async function restoreAction(formData: FormData) {
   const { supabase, user } = await requireUser()
   const entity = String(formData.get('entity') || '') as Entity
@@ -127,6 +153,7 @@ export async function restoreAction(formData: FormData) {
         revalidatePath('/settings/trash')
         return
       }
+
       case 'transactions': {
         const { error } = await supabase
           .from('transactions')
@@ -138,6 +165,7 @@ export async function restoreAction(formData: FormData) {
         revalidatePath('/settings/trash')
         return
       }
+
       case 'categories': {
         const { error } = await supabase
           .from('categories')
@@ -149,6 +177,7 @@ export async function restoreAction(formData: FormData) {
         revalidatePath('/settings/trash')
         return
       }
+
       case 'budgets': {
         const { error } = await supabase
           .from('budgets')
@@ -160,6 +189,7 @@ export async function restoreAction(formData: FormData) {
         revalidatePath('/settings/trash')
         return
       }
+
       case 'goals': {
         const { error } = await supabase
           .from('goals')
@@ -171,6 +201,7 @@ export async function restoreAction(formData: FormData) {
         revalidatePath('/settings/trash')
         return
       }
+
       case 'cards': {
         const { error } = await supabase
           .from('cards')
@@ -182,6 +213,19 @@ export async function restoreAction(formData: FormData) {
         revalidatePath('/settings/trash')
         return
       }
+
+      case 'investments': {
+        const { error } = await supabase
+          .from('investments')
+          .update({ deleted_at: null })
+          .eq('id', id)
+          .eq('user_id', user.id)
+        if (error) throw error
+        revalidatePath('/investments')
+        revalidatePath('/settings/trash')
+        return
+      }
+
       default:
         throw new Error('Entidade desconhecida')
     }
@@ -192,8 +236,10 @@ export async function restoreAction(formData: FormData) {
 }
 
 /**
- * Hard delete (purga). Para ACCOUNTS, apagamos antes as transactions da conta
- * para não violar a FK (erro 23503).
+ * Purga (exclui definitivamente) um item da lixeira.
+ * Para ACCOUNTS: apaga primeiro TRANSACTIONS daquela conta e só depois a conta.
+ * Para CARDS: remove transações ligadas à account do cartão, remove a account, depois o card.
+ * Campos esperados no FormData: entity, id
  */
 export async function purgeAction(formData: FormData) {
   const { supabase, user } = await requireUser()
@@ -205,7 +251,6 @@ export async function purgeAction(formData: FormData) {
   try {
     switch (entity) {
       case 'accounts': {
-        // apaga lançamentos da conta
         const { error: txErr } = await supabase
           .from('transactions')
           .delete()
@@ -213,14 +258,6 @@ export async function purgeAction(formData: FormData) {
           .eq('account_id', id)
         if (txErr) throw txErr
 
-        // apaga possíveis cartões vinculados a esta conta (se existirem)
-        await supabase
-          .from('cards')
-          .delete()
-          .eq('user_id', user.id)
-          .eq('account_id', id)
-
-        // apaga a conta
         const { error: accErr } = await supabase
           .from('accounts')
           .delete()
@@ -232,6 +269,7 @@ export async function purgeAction(formData: FormData) {
         revalidatePath('/settings/trash')
         return
       }
+
       case 'transactions': {
         const { error } = await supabase
           .from('transactions')
@@ -243,13 +281,15 @@ export async function purgeAction(formData: FormData) {
         revalidatePath('/settings/trash')
         return
       }
+
       case 'categories': {
-        // tenta desassociar; se sua FK não permitir, você pode optar por apagar essas TX
+        // tenta desassociar; se não puder (FK sem null), apaga as transações da categoria
         const { error: unsetErr } = await supabase
           .from('transactions')
           .update({ category_id: null })
           .eq('user_id', user.id)
           .eq('category_id', id)
+
         if (unsetErr) {
           const { error: delTx } = await supabase
             .from('transactions')
@@ -265,10 +305,12 @@ export async function purgeAction(formData: FormData) {
           .eq('id', id)
           .eq('user_id', user.id)
         if (error) throw error
+
         revalidatePath('/settings/categories')
         revalidatePath('/settings/trash')
         return
       }
+
       case 'budgets': {
         const { error } = await supabase
           .from('budgets')
@@ -280,6 +322,7 @@ export async function purgeAction(formData: FormData) {
         revalidatePath('/settings/trash')
         return
       }
+
       case 'goals': {
         const { error } = await supabase
           .from('goals')
@@ -291,29 +334,71 @@ export async function purgeAction(formData: FormData) {
         revalidatePath('/settings/trash')
         return
       }
+
       case 'cards': {
+        // Busca a account do cartão (se existir)
+        const { data: card, error: cardErr } = await supabase
+          .from('cards')
+          .select('id, account_id')
+          .eq('id', id)
+          .eq('user_id', user.id)
+          .single()
+        if (cardErr) throw cardErr
+
+        const cardAccountId = (card as any)?.account_id as string | null
+
+        if (cardAccountId) {
+          const { error: delTx } = await supabase
+            .from('transactions')
+            .delete()
+            .eq('user_id', user.id)
+            .eq('account_id', cardAccountId)
+          if (delTx) throw delTx
+
+          const { error: delAcc } = await supabase
+            .from('accounts')
+            .delete()
+            .eq('id', cardAccountId)
+            .eq('user_id', user.id)
+          if (delAcc) throw delAcc
+        }
+
         const { error } = await supabase
           .from('cards')
           .delete()
           .eq('id', id)
           .eq('user_id', user.id)
         if (error) throw error
+
         revalidatePath('/cards')
         revalidatePath('/settings/trash')
         return
       }
+
+      case 'investments': {
+        const { error } = await supabase
+          .from('investments')
+          .delete()
+          .eq('id', id)
+          .eq('user_id', user.id)
+        if (error) throw error
+        revalidatePath('/investments')
+        revalidatePath('/settings/trash')
+        return
+      }
+
       default:
         throw new Error('Entidade desconhecida')
     }
   } catch (err: any) {
     console.error('[trash-actions] purgeAction supabase error:', err)
     if (err?.code === '23503') {
-      throw new Error('Não foi possível excluir: existem registros relacionados.')
+      throw new Error('Não foi possível excluir definitivamente: existem registros relacionados.')
     }
     throw new Error('Falha ao excluir definitivamente')
   }
 }
 
-// Compat: a página importa hardDeleteAction
+// alias opcional para compatibilidade
 export { purgeAction as hardDeleteAction }
 
