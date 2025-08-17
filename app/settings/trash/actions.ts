@@ -1,10 +1,9 @@
 // app/settings/trash/actions.ts
-// Shim de reexport para manter compatibilidade com imports antigos.
-// A implementação real está em ./trash-actions
+// Reexporta da implementação real em ./trash-actions
+// Mantém o nome "hardDeleteAction" esperado por page.tsx
 
 export {
   softDeleteAction,
   restoreAction,
-  purgeAction as hardDeleteAction, // mantém o nome esperado em page.tsx
+  purgeAction as hardDeleteAction,
 } from './trash-actions'
-
