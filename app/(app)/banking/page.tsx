@@ -33,7 +33,16 @@ export default async function BankingPage() {
   }
 
   const accounts = await getAccountsWithBalances()
-  const total = accounts.filter(a => !a.archived).reduce((acc, a) => acc + (a.balance || 0), 0)
+  const total = accounts
+    .filter(a => !a.archived)
+    .reduce((acc, a) => acc + (a.balance || 0), 0)
+
+  // ação server para enviar itens à Lixeira
+  const sendToTrash = async (fd: FormData) => {
+    'use server'
+    const { softDeleteAction } = await import('@/app/settings/trash/actions')
+    await softDeleteAction(fd)
+  }
 
   return (
     <main className="p-6 space-y-4">
@@ -89,7 +98,14 @@ export default async function BankingPage() {
                     </td>
                     <td className="py-3 px-4">
                       <div className="flex justify-end gap-2">
-                        <Link href={`/banking/${a.id}/edit`} className="px-3 py-1.5 rounded-lg border hover:bg-neutral-50">Editar</Link>
+                        <Link
+                          href={`/banking/${a.id}/edit`}
+                          className="px-3 py-1.5 rounded-lg border hover:bg-neutral-50"
+                        >
+                          Editar
+                        </Link>
+
+                        {/* Arquivar (flag archived) */}
                         {!a.archived && (
                           <form action={deleteAccount}>
                             <input type="hidden" name="id" value={a.id} />
@@ -98,6 +114,16 @@ export default async function BankingPage() {
                             </button>
                           </form>
                         )}
+
+                        {/* Enviar para Lixeira (soft-delete com deleted_at) */}
+                        <form action={sendToTrash}>
+                          <input type="hidden" name="entity" value="accounts" />
+                          <input type="hidden" name="id" value={a.id} />
+                          <input type="hidden" name="back" value="/banking" />
+                          <button className="px-3 py-1.5 rounded-lg border border-rose-400 text-rose-700 hover:bg-rose-50">
+                            Excluir
+                          </button>
+                        </form>
                       </div>
                     </td>
                   </tr>
@@ -105,7 +131,9 @@ export default async function BankingPage() {
               })}
               {accounts.length === 0 && (
                 <tr>
-                  <td colSpan={5} className="py-6 text-center text-neutral-500">Nenhuma conta cadastrada.</td>
+                  <td colSpan={5} className="py-6 text-center text-neutral-500">
+                    Nenhuma conta cadastrada.
+                  </td>
                 </tr>
               )}
             </tbody>
@@ -115,5 +143,3 @@ export default async function BankingPage() {
     </main>
   )
 }
-
-
