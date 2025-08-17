@@ -19,6 +19,7 @@ import {
   FaPlus,
   FaMagnifyingGlass,
   FaGear,
+  FaTrashCan,
 } from 'react-icons/fa6'
 
 const inter = Inter({ subsets: ['latin'], variable: '--font-inter' })
@@ -170,6 +171,15 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                       Categorias
                     </Link>
                   </li>
+<li className="mb-1">
+    <Link
+      href="/settings/trash"
+      className="flex items-center px-3 py-2 rounded-lg text-neutral-600 hover:bg-neutral-50 font-medium"
+    >
+      <FaTrashCan className="w-5 mr-2" />
+      Lixeira
+    </Link>
+  </li>
                 </ul>
               </div>
             </nav>
