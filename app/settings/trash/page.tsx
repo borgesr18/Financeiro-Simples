@@ -3,7 +3,7 @@ export const dynamic = 'force-dynamic'
 
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
-import { restoreAction, hardDeleteAction } from './actions'
+import { hardDeleteAction, restoreAction } from './trash-actions'
 import { format } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
 
