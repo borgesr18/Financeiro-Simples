@@ -4,8 +4,6 @@ import Link from 'next/link'
 import { Inter } from 'next/font/google'
 import './globals.css'
 
-import UserMiniCard from '@/components/UserMiniCard'
-
 import {
   FaWallet,
   FaHouse,
@@ -19,11 +17,13 @@ import {
   FaBars,
   FaBell,
   FaPlus,
-  FaMagnifyingGlass, // substitui o antigo FaSearch
-  FaGear,            // substitui o antigo FaCog
+  FaMagnifyingGlass,
+  FaGear,
   FaTrashCan,
-  FaUsers,
 } from 'react-icons/fa6'
+
+import UserMiniCard from '@/components/UserMiniCard'
+import SuspendedNotice from '@/components/SuspendedNotice'
 
 const inter = Inter({ subsets: ['latin'], variable: '--font-inter' })
 
@@ -190,7 +190,7 @@ export default function RootLayout({
                       href="/settings/users"
                       className="flex items-center px-3 py-2 rounded-lg text-neutral-600 hover:bg-neutral-50 font-medium"
                     >
-                      <FaUsers className="w-5 mr-2" />
+                      <FaGear className="w-5 mr-2" />
                       Usuários
                     </Link>
                   </li>
@@ -198,7 +198,7 @@ export default function RootLayout({
               </div>
             </nav>
 
-            {/* Usuário logado / admin badge */}
+            {/* Usuário */}
             <div className="p-4 border-t border-neutral-100">
               <UserMiniCard />
             </div>
@@ -208,7 +208,6 @@ export default function RootLayout({
           <div className="flex-1 flex flex-col min-h-0">
             {/* Header */}
             <header className="bg-white border-b border-neutral-200 p-4 flex items-center justify-between">
-              {/* Botão menu mobile */}
               <button className="md:hidden text-neutral-500 hover:text-neutral-700">
                 <FaBars className="text-xl" />
               </button>
@@ -229,7 +228,6 @@ export default function RootLayout({
                 </div>
               </div>
 
-              {/* Ações à direita */}
               <div className="flex items-center space-x-3">
                 <button className="p-2 text-neutral-500 hover:text-neutral-700 hover:bg-neutral-50 rounded-full">
                   <FaBell />
@@ -244,6 +242,9 @@ export default function RootLayout({
               </div>
             </header>
 
+            {/* 🚩 Aviso de conta suspensa */}
+            <SuspendedNotice />
+
             {/* Área rolável das páginas */}
             <div className="flex-1 min-h-0 overflow-y-auto">
               {children}
@@ -254,3 +255,4 @@ export default function RootLayout({
     </html>
   )
 }
+
