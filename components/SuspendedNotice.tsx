@@ -16,8 +16,7 @@ export default async function SuspendedNotice() {
 
   return (
     <div className="bg-rose-50 border-b border-rose-200 text-rose-700 px-4 py-2 text-sm">
-      Sua conta está <strong>suspensa</strong>. Visualização liberada, mas ações de criar/editar/excluir estão bloqueadas.
-      Fale com o administrador para reativar.
+      Sua conta está <strong>suspensa</strong>. Ações (criar/editar/excluir) estão bloqueadas. Fale com o administrador para reativar.
     </div>
   )
 }
