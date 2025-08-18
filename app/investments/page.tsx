@@ -3,7 +3,7 @@ export const dynamic = 'force-dynamic'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
 import { formatBRL } from '@/lib/format'
-import { softDeleteAction } from '@/app/settings/trash/actions'
+import { softDeleteAction } from '@/app/settings/trash/trash-actions'
 import { AccountIcon } from '@/components/account-icons'
 
 type Row = {
