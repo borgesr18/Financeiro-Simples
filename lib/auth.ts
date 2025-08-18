@@ -2,9 +2,10 @@
 import { createClient } from '@/lib/supabase/server'
 
 /**
- * Garante que há usuário autenticado E que NÃO está suspenso.
- * - Lança erro "SUSPENDED" se o perfil estiver suspenso.
- * - Tolera ambientes sem tabela `profiles` (não quebra).
+ * Garante usuário autenticado e NÃO suspenso.
+ * - Lança { code: 'UNAUTHENTICATED' } se não logado
+ * - Lança { code: 'SUSPENDED' } se profiles.is_suspended = true
+ * - Tolera ambientes sem tabela `profiles`
  */
 export async function requireActiveUser() {
   const supabase = createClient()
@@ -29,7 +30,7 @@ export async function requireActiveUser() {
       throw e
     }
   } catch {
-    // Se a tabela `profiles` não existir neste ambiente, segue sem bloquear por DB.
+    // Se não existir a tabela `profiles`, não bloqueia aqui.
   }
 
   return { supabase, user }
