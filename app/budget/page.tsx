@@ -1,39 +1,33 @@
 // app/budget/page.tsx
 export const dynamic = 'force-dynamic'
+export const runtime = 'nodejs'
 
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
 import { formatBRL } from '@/lib/format'
-import { softDeleteAction } from '@/app/settings/trash/actions'
+import { createBudget, deleteBudget } from './actions'
 
-// Helpers de ano/mês
-function clampMonth(y: number, m: number) {
-  const d = new Date(y, m - 1, 1)
-  return { y: d.getFullYear(), m: d.getMonth() + 1 }
-}
-function prevYM(y: number, m: number) {
-  const d = new Date(y, m - 2, 1)
-  return { y: d.getFullYear(), m: d.getMonth() + 1 }
-}
-function nextYM(y: number, m: number) {
-  const d = new Date(y, m, 1)
-  return { y: d.getFullYear(), m: d.getMonth() + 1 }
+type Category = {
+  id: string
+  name: string
 }
 
-// Linha usada na UI (já com nome da categoria resolvido)
-type UIRow = {
+type BudgetRow = {
   id: string
   year: number
   month: number
   amount: number
-  category_name: string
+  category_id: string
+  category_name: string | null
 }
 
-export default async function BudgetPage({
-  searchParams,
-}: {
-  searchParams?: { y?: string; m?: string }
-}) {
+function monthLabel(y: number, m: number) {
+  // m = 1..12
+  const d = new Date(y, m - 1, 1)
+  return d.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })
+}
+
+export default async function BudgetPage() {
   const supabase = createClient()
   const { data: { user } } = await supabase.auth.getUser()
 
@@ -41,120 +35,149 @@ export default async function BudgetPage({
     return (
       <main className="p-6">
         <div className="max-w-xl mx-auto bg-white rounded-xl shadow-card p-6">
-          <p className="mb-4">Faça login para visualizar seus orçamentos.</p>
+          <p className="mb-4">Faça login para gerenciar orçamentos.</p>
           <Link href="/login" className="px-4 py-2 bg-primary-500 text-white rounded-lg">Ir para login</Link>
         </div>
       </main>
     )
   }
 
-  // 1) Ano/mês da URL (ou atual)
-  const now = new Date()
-  const y0 = Number(searchParams?.y ?? now.getFullYear())
-  const m0 = Number(searchParams?.m ?? now.getMonth() + 1)
-  const { y, m } = clampMonth(y0, m0)
+  // Carrega categorias (para o formulário "Novo orçamento")
+  const { data: catData, error: catErr } = await supabase
+    .from('categories')
+    .select('id, name')
+    .eq('user_id', user.id)
+    .is('deleted_at', null)
+    .order('name', { ascending: true })
 
-  const labelMes = new Date(y, m - 1, 1).toLocaleDateString('pt-BR', {
-    month: 'long',
-    year: 'numeric',
-  })
-  const { y: py, m: pm } = prevYM(y, m)
-  const { y: ny, m: nm } = nextYM(y, m)
+  if (catErr) {
+    console.error('[budget/page] categories error:', catErr)
+  }
+  const categories: Category[] = (catData ?? []).map(c => ({
+    id: String(c.id),
+    name: (c as any).name ?? 'Sem nome',
+  }))
 
-  // 2) Busca budgets do mês (apenas não deletados)
-  const { data, error } = await supabase
+  // Carrega orçamentos + nome da categoria
+  const { data: bData, error: bErr } = await supabase
     .from('budgets')
     .select('id, year, month, amount, category_id, categories(name)')
-    .eq('year', y)
-    .eq('month', m)
+    .eq('user_id', user.id)
     .is('deleted_at', null)
-    .order('created_at', { ascending: false })
+    .order('year', { ascending: false })
+    .order('month', { ascending: false })
+    .order('category_id', { ascending: true })
 
-  if (error) {
-    console.error('[BudgetPage] erro ao carregar budgets:', error)
+  if (bErr) {
+    console.error('[budget/page] budgets error:', bErr)
   }
 
-  // 3) Normaliza o shape (categories pode vir como objeto OU array)
-  const rows: UIRow[] = (data ?? []).map((b: any) => {
-    const cat = Array.isArray(b?.categories)
-      ? b.categories[0]
-      : b?.categories
+  // Normaliza o nested categories(name) (objeto OU array)
+  const rows: BudgetRow[] = (bData ?? []).map((b: any) => {
+    const cat = b.categories
+    const catName = Array.isArray(cat)
+      ? (cat[0]?.name ?? null)
+      : (cat?.name ?? null)
     return {
       id: String(b.id),
-      year: Number(b.year),
-      month: Number(b.month),
+      year: Number(b.year) || new Date().getFullYear(),
+      month: Number(b.month) || (new Date().getMonth() + 1),
       amount: Number(b.amount) || 0,
-      category_name: cat?.name ?? '—',
+      category_id: String(b.category_id),
+      category_name: catName,
     }
   })
 
-  return (
-    <main className="p-6 space-y-4">
-      {/* Cabeçalho */}
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex items-center gap-2">
-          <Link
-            href={`/budget?y=${py}&m=${pm}`}
-            className="px-3 py-1.5 rounded-lg border hover:bg-neutral-50"
-          >
-            ◀
-          </Link>
-          <h1 className="text-2xl font-semibold capitalize">{labelMes}</h1>
-          <Link
-            href={`/budget?y=${ny}&m=${nm}`}
-            className="px-3 py-1.5 rounded-lg border hover:bg-neutral-50"
-          >
-            ▶
-          </Link>
-        </div>
+  const total = rows.reduce((acc, r) => acc + (r.amount || 0), 0)
 
-        <div className="flex gap-2">
-          <Link
-            href="/budget/new"
-            className="px-4 py-2 bg-sky-500 hover:bg-sky-600 text-white rounded-lg"
-          >
-            Novo orçamento
-          </Link>
+  return (
+    <main className="p-6 space-y-6">
+      <div className="flex items-start sm:items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-semibold">Orçamentos</h1>
+          <p className="text-sm text-neutral-500">
+            {rows.length} item(ns) • Total planejado: {formatBRL(total)}
+          </p>
         </div>
+        <Link href="/settings/categories" className="px-3 py-2 rounded-lg border hover:bg-neutral-50">
+          Gerenciar categorias
+        </Link>
       </div>
 
+      {/* Novo orçamento */}
+      <section className="bg-white rounded-xl shadow-card p-6">
+        <h2 className="text-lg font-semibold mb-4">Novo orçamento</h2>
+        <form action={createBudget} className="grid gap-4 sm:grid-cols-4">
+          <div className="sm:col-span-2">
+            <label className="block text-sm mb-1">Categoria</label>
+            <select name="category_id" className="w-full rounded-lg border px-3 py-2">
+              {categories.map(c => (
+                <option key={c.id} value={c.id}>{c.name}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="block text-sm mb-1">Ano</label>
+            <input
+              name="year"
+              type="number"
+              className="w-full rounded-lg border px-3 py-2"
+              defaultValue={new Date().getFullYear()}
+            />
+          </div>
+          <div>
+            <label className="block text-sm mb-1">Mês (1–12)</label>
+            <input
+              name="month"
+              type="number"
+              min={1}
+              max={12}
+              className="w-full rounded-lg border px-3 py-2"
+              defaultValue={new Date().getMonth() + 1}
+            />
+          </div>
+          <div className="sm:col-span-2">
+            <label className="block text-sm mb-1">Valor</label>
+            <input
+              name="amount"
+              type="number"
+              step="0.01"
+              className="w-full rounded-lg border px-3 py-2"
+              placeholder="0,00"
+            />
+          </div>
+          <div className="sm:col-span-2 flex items-end">
+            <button className="px-4 py-2 bg-primary-500 hover:bg-primary-600 text-white rounded-lg">
+              Adicionar
+            </button>
+          </div>
+        </form>
+      </section>
+
       {/* Tabela */}
-      <div className="bg-white rounded-xl shadow-card overflow-hidden">
+      <section className="bg-white rounded-xl shadow-card overflow-hidden">
         <div className="overflow-x-auto">
-          <table className="min-w-[760px] w-full text-sm">
-            <thead className="bg-neutral-50">
-              <tr className="text-left border-b">
+          <table className="min-w-[860px] w-full text-sm">
+            <thead className="bg-neutral-50 border-b">
+              <tr className="text-left">
+                <th className="py-3 px-4">Período</th>
                 <th className="py-3 px-4">Categoria</th>
-                <th className="py-3 px-4">Mês</th>
-                <th className="py-3 px-4">Valor orçado</th>
+                <th className="py-3 px-4">Valor</th>
                 <th className="py-3 px-4 text-right">Ações</th>
               </tr>
             </thead>
             <tbody>
-              {rows.map((b) => (
-                <tr key={b.id} className="border-b last:border-0">
-                  <td className="py-3 px-4">{b.category_name}</td>
-                  <td className="py-3 px-4">
-                    {String(b.month).padStart(2, '0')}/{b.year}
-                  </td>
-                  <td className="py-3 px-4">{formatBRL(b.amount)}</td>
+              {rows.map(r => (
+                <tr key={r.id} className="border-b last:border-0">
+                  <td className="py-3 px-4">{monthLabel(r.year, r.month)}</td>
+                  <td className="py-3 px-4">{r.category_name ?? '—'}</td>
+                  <td className="py-3 px-4">{formatBRL(r.amount)}</td>
                   <td className="py-3 px-4">
                     <div className="flex justify-end gap-2">
-                      <Link
-                        href={`/budget/${b.id}/edit`}
-                        className="px-3 py-1.5 rounded-lg border hover:bg-neutral-50"
-                      >
-                        Editar
-                      </Link>
-
-                      {/* Excluir -> Lixeira (soft delete) */}
-                      <form action={softDeleteAction}>
-                        <input type="hidden" name="entity" value="budgets" />
-                        <input type="hidden" name="id" value={b.id} />
-                        <button
-                          type="submit"
-                          className="px-3 py-1.5 rounded-lg border border-rose-300 text-rose-600 hover:bg-rose-50"
-                        >
+                      {/* Mantendo a regra do módulo: exclusão direta (sem lixeira) */}
+                      <form action={deleteBudget}>
+                        <input type="hidden" name="id" value={r.id} />
+                        <button className="px-3 py-1.5 rounded-lg border border-rose-300 text-rose-600 hover:bg-rose-50">
                           Excluir
                         </button>
                       </form>
@@ -162,18 +185,17 @@ export default async function BudgetPage({
                   </td>
                 </tr>
               ))}
-
               {rows.length === 0 && (
                 <tr>
                   <td colSpan={4} className="py-6 text-center text-neutral-500">
-                    Nenhum orçamento para {labelMes}. Crie um novo orçamento.
+                    Nenhum orçamento cadastrado.
                   </td>
                 </tr>
               )}
             </tbody>
           </table>
         </div>
-      </div>
+      </section>
     </main>
   )
 }
