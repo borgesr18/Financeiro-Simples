@@ -6,6 +6,8 @@ import { createClient } from '@/lib/supabase/server'
 import { randomUUID } from 'crypto'
 // Import para detectar o redirect do Next (não tratar como erro)
 import { isRedirectError } from 'next/dist/client/components/redirect'
+// ✅ novo: guard que bloqueia ações se o usuário estiver suspenso
+import { requireActiveUser } from '@/lib/auth'
 
 /* =========================
    Helpers de saneamento
@@ -41,11 +43,14 @@ function strOrNull(v: FormDataEntryValue | null) {
 export async function createCard(fd: FormData) {
   'use server'
 
-  const supabase = createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-  if (!user) throw new Error('Sem usuário')
+  // ✅ usa guard — já retorna supabase + user e falha se suspenso
+  let supabase, user
+  try {
+    ({ supabase, user } = await requireActiveUser())
+  } catch (e: any) {
+    if (e?.code === 'SUSPENDED') throw new Error('Sua conta está suspensa. Não é possível criar cartões.')
+    throw e
+  }
 
   try {
     const nameRaw = (fd.get('name') ?? '').toString().trim()
@@ -123,11 +128,13 @@ export async function createCard(fd: FormData) {
 export async function updateCard(id: string, fd: FormData) {
   'use server'
 
-  const supabase = createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-  if (!user) throw new Error('Sem usuário')
+  let supabase, user
+  try {
+    ({ supabase, user } = await requireActiveUser())
+  } catch (e: any) {
+    if (e?.code === 'SUSPENDED') throw new Error('Sua conta está suspensa. Não é possível editar cartões.')
+    throw e
+  }
 
   try {
     // 1) Busca cartão atual (fallbacks/validações)
@@ -242,11 +249,13 @@ export async function updateCard(id: string, fd: FormData) {
 export async function archiveCard(id: string) {
   'use server'
 
-  const supabase = createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-  if (!user) throw new Error('Sem usuário')
+  let supabase, user
+  try {
+    ({ supabase, user } = await requireActiveUser())
+  } catch (e: any) {
+    if (e?.code === 'SUSPENDED') throw new Error('Sua conta está suspensa. Não é possível arquivar cartões.')
+    throw e
+  }
 
   const { error } = await supabase
     .from('cards')
@@ -277,6 +286,7 @@ function computeCycle(closingDay: number, base = new Date()) {
   if (today <= closingDay) {
     end = new Date(y, m - 1, closingDay)
     start = new Date(y, m - 2, closingDay + 1)
+    )
   }
 
   const toISO = (d: Date) => d.toISOString().slice(0, 10)
@@ -286,11 +296,13 @@ function computeCycle(closingDay: number, base = new Date()) {
 export async function generateStatement(cardId: string) {
   'use server'
 
-  const supabase = createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-  if (!user) throw new Error('Sem usuário')
+  let supabase, user
+  try {
+    ({ supabase, user } = await requireActiveUser())
+  } catch (e: any) {
+    if (e?.code === 'SUSPENDED') throw new Error('Sua conta está suspensa. Não é possível gerar fatura.')
+    throw e
+  }
 
   const { data: c, error: cErr } = await supabase
     .from('cards')
@@ -381,11 +393,13 @@ export async function payStatement(
 ) {
   'use server'
 
-  const supabase = createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-  if (!user) throw new Error('Sem usuário')
+  let supabase, user
+  try {
+    ({ supabase, user } = await requireActiveUser())
+  } catch (e: any) {
+    if (e?.code === 'SUSPENDED') throw new Error('Sua conta está suspensa. Não é possível registrar pagamento de fatura.')
+    throw e
+  }
 
   const { data: st, error: stErr } = await supabase
     .from('card_statements')
