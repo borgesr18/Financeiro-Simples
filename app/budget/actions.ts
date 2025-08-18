@@ -2,158 +2,102 @@
 'use server'
 
 import { revalidatePath } from 'next/cache'
-import { createActionClient } from '@/lib/supabase/actions'
+import { redirect } from 'next/navigation'
+import { createClient } from '@/lib/supabase/server'
+import { isRedirectError } from 'next/dist/client/components/redirect'
 
-type Parsed = {
-  id?: string | null
-  category_id: string
-  year?: number
-  month?: number
-  amount: number
-  period?: string
+function toInt(v: FormDataEntryValue | null, fb = 0) {
+  const n = Number(v)
+  return Number.isFinite(n) ? Math.trunc(n) : fb
+}
+function toNum(v: FormDataEntryValue | null, fb = 0) {
+  const n = Number(v)
+  return Number.isFinite(n) ? n : fb
+}
+function uuidOrThrow(v: FormDataEntryValue | null, msg = 'ID inválido') {
+  const s = (v ?? '').toString().trim()
+  if (!s) throw new Error(msg)
+  return s
 }
 
-function parseForm(formData: FormData): Parsed {
-  const id = (formData.get('id') ?? '') as string
-  const category_id = String(formData.get('category_id') ?? '')
-  const amount = Number(formData.get('amount') ?? 0)
+/** Cria orçamento (mês/ano/categoria/valor) */
+export async function createBudget(fd: FormData) {
+  const supabase = createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) throw new Error('Sem usuário')
 
-  const y = formData.get('year')
-  const m = formData.get('month')
-  const year = y != null && y !== '' ? Number(y) : undefined
-  const month = m != null && m !== '' ? Number(m) : undefined
+  try {
+    const category_id = uuidOrThrow(fd.get('category_id'), 'Categoria obrigatória')
+    const year = toInt(fd.get('year'), new Date().getFullYear())
+    const month = Math.min(12, Math.max(1, toInt(fd.get('month'), new Date().getMonth() + 1)))
+    const amount = toNum(fd.get('amount'), 0)
 
-  let period: string | undefined = undefined
-  if (year && month) period = `${year}-${String(month).padStart(2, '0')}`
-  if (!period) {
-    const p = String(formData.get('period') ?? '')
-    if (p) period = p
+    const { error } = await supabase.from('budgets').insert({
+      user_id: user.id,
+      category_id,
+      year,
+      month,
+      amount,
+    })
+    if (error) throw error
+  } catch (e) {
+    if (isRedirectError(e)) throw e
+    console.error('[budget:createBudget] fail', e)
+    throw new Error('Falha ao criar orçamento')
   }
 
-  return { id: id || undefined, category_id, year, month, amount, period }
+  revalidatePath('/budget')
+  redirect('/budget')
 }
 
-async function getCategoryName(supabase: ReturnType<typeof createActionClient>, userId: string, category_id: string) {
-  if (!category_id) return null
-  const { data } = await supabase
-    .from('categories')
-    .select('name')
-    .eq('id', category_id)
-    .eq('user_id', userId)
-    .maybeSingle()
-  return data?.name ?? null
-}
-
-export async function createBudget(formData: FormData) {
-  const supabase = createActionClient()
+/** Atualiza orçamento (id no form) */
+export async function updateBudget(fd: FormData) {
+  const supabase = createClient()
   const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return
+  if (!user) throw new Error('Sem usuário')
 
-  const p = parseForm(formData)
-  const categoryText = await getCategoryName(supabase, user.id, p.category_id)
+  const id = uuidOrThrow(fd.get('id'))
+  try {
+    const patch: any = {}
+    if (fd.has('category_id')) patch.category_id = uuidOrThrow(fd.get('category_id'))
+    if (fd.has('year')) patch.year = toInt(fd.get('year'))
+    if (fd.has('month')) patch.month = Math.min(12, Math.max(1, toInt(fd.get('month'))))
+    if (fd.has('amount')) patch.amount = toNum(fd.get('amount'))
 
-  let errYM: any = null
-  if (p.year && p.month) {
     const { error } = await supabase
       .from('budgets')
-      .upsert(
-        {
-          user_id: user.id,
-          category_id: p.category_id,
-          year: p.year,
-          month: p.month,
-          amount: p.amount,
-          ...(categoryText ? { category: categoryText } : {}),
-        },
-        { onConflict: 'user_id,year,month,category_id' }
-      )
-    errYM = error
-  } else {
-    errYM = { code: 'MISSING_YM' }
-  }
-
-  if (errYM && (errYM.code === '42703' || /column .* does not exist/i.test(errYM.message ?? '') || errYM.code === 'MISSING_YM')) {
-    const period = p.period
-    if (!period) throw new Error('Período não informado (YYYY-MM).')
-    const { error: e2 } = await supabase
-      .from('budgets')
-      .upsert(
-        {
-          user_id: user.id,
-          category_id: p.category_id,
-          period,
-          amount: p.amount,
-          ...(categoryText ? { category: categoryText } : {}),
-        },
-        { onConflict: 'user_id,period,category_id' }
-      )
-    if (e2) throw new Error(e2.message)
-  } else if (errYM) {
-    throw new Error(errYM.message)
-  }
-
-  revalidatePath('/budget')
-}
-
-export async function updateBudget(formData: FormData) {
-  const supabase = createActionClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return
-
-  const p = parseForm(formData)
-  if (!p.id) throw new Error('ID do orçamento não informado.')
-
-  const categoryText = await getCategoryName(supabase, user.id, p.category_id)
-
-  let { error } = await supabase
-    .from('budgets')
-    .update({
-      category_id: p.category_id,
-      year: p.year,
-      month: p.month,
-      amount: p.amount,
-      ...(categoryText ? { category: categoryText } : {}),
-    })
-    .eq('id', p.id)
-    .eq('user_id', user.id)
-
-  if (error && (error.code === '42703' || /column .* does not exist/i.test(error.message ?? ''))) {
-    if (!p.period && !(p.year && p.month)) throw new Error('Informe period (YYYY-MM) ou year/month.')
-    const period = p.period ?? `${p.year}-${String(p.month).padStart(2, '0')}`
-    const res2 = await supabase
-      .from('budgets')
-      .update({
-        category_id: p.category_id,
-        period,
-        amount: p.amount,
-        ...(categoryText ? { category: categoryText } : {}),
-      })
-      .eq('id', p.id)
+      .update(patch)
+      .eq('id', id)
       .eq('user_id', user.id)
-    if (res2.error) throw new Error(res2.error.message)
-  } else if (error) {
-    throw new Error(error.message)
+    if (error) throw error
+  } catch (e) {
+    if (isRedirectError(e)) throw e
+    console.error('[budget:updateBudget] fail', e)
+    throw new Error('Falha ao atualizar orçamento')
+  }
+
+  revalidatePath('/budget')
+  redirect('/budget')
+}
+
+/** Exclui definitivamente (mantendo comportamento antigo do módulo) */
+export async function deleteBudget(fd: FormData) {
+  const supabase = createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) throw new Error('Sem usuário')
+
+  const id = uuidOrThrow(fd.get('id'))
+  try {
+    const { error } = await supabase
+      .from('budgets')
+      .delete()
+      .eq('id', id)
+      .eq('user_id', user.id)
+    if (error) throw error
+  } catch (e) {
+    console.error('[budget:deleteBudget] fail', e)
+    throw new Error('Falha ao excluir orçamento')
   }
 
   revalidatePath('/budget')
 }
-
-export async function deleteBudget(formData: FormData) {
-  const id = String(formData.get('id') ?? '')
-  if (!id) return
-
-  const supabase = createActionClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return
-
-  const { error } = await supabase.from('budgets').delete().eq('id', id).eq('user_id', user.id)
-  if (error) throw new Error(error.message)
-
-  revalidatePath('/budget')
-}
-
-export async function upsertBudget(formData: FormData) {
-  if ((formData.get('id') ?? '') as string) return updateBudget(formData)
-  return createBudget(formData)
-}
-
