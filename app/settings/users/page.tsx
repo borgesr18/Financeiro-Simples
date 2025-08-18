@@ -18,14 +18,12 @@ export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
 
 async function isAdmin(userId: string | null, email: string | null) {
-  // 1) whitelist via env
   const allow = (process.env.ADMIN_EMAILS || '')
     .split(',')
     .map(s => s.trim().toLowerCase())
     .filter(Boolean)
   if (email && allow.includes(email.toLowerCase())) return true
 
-  // 2) profiles.is_admin (se existir)
   try {
     if (!userId) return false
     const supabase = createClient()
@@ -41,22 +39,12 @@ async function isAdmin(userId: string | null, email: string | null) {
 }
 
 function getBaseUrlFromRequest(): string {
-  // Preferir NEXT_PUBLIC_SITE_URL se existir
   const envUrl = process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, '')
   if (envUrl) return envUrl
-
-  // Monta a URL absoluta a partir dos headers
   const h = headers()
   const proto = h.get('x-forwarded-proto') ?? 'https'
-  const host =
-    h.get('x-forwarded-host') ??
-    h.get('host') ??
-    '' // em Vercel sempre vem
-
-  if (host) return `${proto}://${host}`
-
-  // fallback seguro para dev
-  return 'http://localhost:3000'
+  const host = h.get('x-forwarded-host') ?? h.get('host') ?? ''
+  return host ? `${proto}://${host}` : 'http://localhost:3000'
 }
 
 export default async function UsersPage() {
@@ -65,8 +53,6 @@ export default async function UsersPage() {
   if (!user) redirect('/login')
 
   const admin = await isAdmin(user.id, user.email ?? null)
-
-  // -> sua versão “sem redirect seco”
   if (!admin) {
     return (
       <main className="p-6">
@@ -88,7 +74,6 @@ export default async function UsersPage() {
     )
   }
 
-  // Se não houver Service Role, mostra orientação e evita chamadas
   if (!hasAdminKey()) {
     return (
       <main className="p-6 space-y-6">
@@ -100,23 +85,33 @@ export default async function UsersPage() {
         </div>
         <div className="bg-white rounded-xl shadow-card p-4">
           <p className="text-sm text-neutral-600">
-            Para listar/convidar usuários, defina <code>SUPABASE_SERVICE_ROLE_KEY</code> nas variáveis de ambiente do projeto.
+            Para listar/convidar usuários, defina <code>SUPABASE_SERVICE_ROLE_KEY</code> nas variáveis de ambiente.
           </p>
         </div>
       </main>
     )
   }
 
-  // Busca via API com URL absoluta (corrige o erro de Invalid URL)
+  // >>> Correção principal: encaminhar cookies para a API interna <<<
   let users: AdminUser[] = []
   try {
     const base = getBaseUrlFromRequest()
-    const res = await fetch(`${base}/api/admin/users`, { cache: 'no-store' })
+    const h = headers()
+    const cookie = h.get('cookie') ?? ''
+
+    const res = await fetch(`${base}/api/admin/users`, {
+      cache: 'no-store',
+      // cookies não são enviados automaticamente com URL absoluta;
+      // então repassamos manualmente:
+      headers: { cookie },
+    })
+
     if (!res.ok) {
       const j = await res.json().catch(() => ({}))
       console.error('[users/page] api error:', j)
       throw new Error(j?.error ?? 'Falha ao carregar usuários')
     }
+
     const data = await res.json()
     users = (data?.users ?? []) as AdminUser[]
   } catch (err) {
@@ -193,3 +188,4 @@ export default async function UsersPage() {
     </main>
   )
 }
+
