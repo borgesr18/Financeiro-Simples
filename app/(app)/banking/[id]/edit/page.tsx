@@ -4,9 +4,7 @@ export const dynamic = 'force-dynamic'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
-import { formatBRL } from '@/lib/format'
 
-// Tipos auxiliares simples (ajuste conforme seu schema)
 type Account = {
   id: string
   user_id: string
@@ -72,19 +70,19 @@ export default async function EditAccountPage({
   }
 
   // === Server actions locais (wrappers) ===
-  // Atualizar conta: chamamos a action do módulo e passamos o ID + FormData
+
+  // Atualizar conta — updateAccount espera apenas (fd: FormData)
   const doUpdate = async (fd: FormData) => {
     'use server'
     const { updateAccount } = await import('../../actions')
-    await updateAccount(acc.id, fd)
+    if (!fd.get('id')) fd.set('id', acc.id)
+    await updateAccount(fd)
   }
 
   // Enviar para a lixeira (soft delete)
   const doArchive = async (fd: FormData) => {
     'use server'
-    const { softDeleteAction } = await import(
-      '@/app/settings/trash/actions'
-    )
+    const { softDeleteAction } = await import('@/app/settings/trash/actions')
     const f = new FormData()
     f.set('entity', 'accounts')
     f.set('id', String(fd.get('id') || acc.id))
@@ -94,9 +92,7 @@ export default async function EditAccountPage({
   // Excluir definitivamente (purge)
   const doDelete = async (fd: FormData) => {
     'use server'
-    const { purgeAction } = await import(
-      '@/app/settings/trash/actions'
-    )
+    const { purgeAction } = await import('@/app/settings/trash/actions')
     const f = new FormData()
     f.set('entity', 'accounts')
     f.set('id', String(fd.get('id') || acc.id))
@@ -199,11 +195,8 @@ export default async function EditAccountPage({
           {/* Enviar para lixeira */}
           <form action={doArchive} className="space-y-2">
             <input type="hidden" name="id" value={acc.id} />
-            {/* Damos o hint de entity no HTML (o server action já garante também) */}
             <input type="hidden" name="entity" value="accounts" />
-            <button
-              className="w-full px-3 py-2 rounded-lg border border-amber-300 text-amber-700 hover:bg-amber-50"
-            >
+            <button className="w-full px-3 py-2 rounded-lg border border-amber-300 text-amber-700 hover:bg-amber-50">
               Enviar para lixeira
             </button>
           </form>
@@ -212,9 +205,7 @@ export default async function EditAccountPage({
           <form action={doDelete} className="space-y-2">
             <input type="hidden" name="id" value={acc.id} />
             <input type="hidden" name="entity" value="accounts" />
-            <button
-              className="w-full px-3 py-2 rounded-lg border border-rose-300 text-rose-600 hover:bg-rose-50"
-            >
+            <button className="w-full px-3 py-2 rounded-lg border border-rose-300 text-rose-600 hover:bg-rose-50">
               Excluir definitivamente
             </button>
           </form>
@@ -222,11 +213,10 @@ export default async function EditAccountPage({
           <p className="text-xs text-neutral-500">
             Enviar para a lixeira marca <code>deleted_at</code>. Excluir
             definitivamente remove o registro (e, no caso de contas, também
-            remove os lançamentos vinculados na lixeira).
+            apaga os lançamentos ligados a ela).
           </p>
         </div>
       </div>
     </main>
   )
 }
-
