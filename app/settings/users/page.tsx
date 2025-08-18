@@ -1,6 +1,7 @@
 // app/settings/users/page.tsx
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
+import { headers } from 'next/headers'
 import { createClient } from '@/lib/supabase/server'
 import { hasAdminKey } from '@/lib/supabase/admin'
 import InviteUserForm from '@/components/admin/InviteUserForm'
@@ -17,12 +18,14 @@ export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
 
 async function isAdmin(userId: string | null, email: string | null) {
+  // 1) whitelist via env
   const allow = (process.env.ADMIN_EMAILS || '')
     .split(',')
     .map(s => s.trim().toLowerCase())
     .filter(Boolean)
   if (email && allow.includes(email.toLowerCase())) return true
 
+  // 2) profiles.is_admin (se existir)
   try {
     if (!userId) return false
     const supabase = createClient()
@@ -37,6 +40,25 @@ async function isAdmin(userId: string | null, email: string | null) {
   }
 }
 
+function getBaseUrlFromRequest(): string {
+  // Preferir NEXT_PUBLIC_SITE_URL se existir
+  const envUrl = process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, '')
+  if (envUrl) return envUrl
+
+  // Monta a URL absoluta a partir dos headers
+  const h = headers()
+  const proto = h.get('x-forwarded-proto') ?? 'https'
+  const host =
+    h.get('x-forwarded-host') ??
+    h.get('host') ??
+    '' // em Vercel sempre vem
+
+  if (host) return `${proto}://${host}`
+
+  // fallback seguro para dev
+  return 'http://localhost:3000'
+}
+
 export default async function UsersPage() {
   const supabase = createClient()
   const { data: { user } } = await supabase.auth.getUser()
@@ -44,8 +66,8 @@ export default async function UsersPage() {
 
   const admin = await isAdmin(user.id, user.email ?? null)
 
+  // -> sua versão “sem redirect seco”
   if (!admin) {
-    // Mensagem gentil em vez de redirect "seco"
     return (
       <main className="p-6">
         <div className="max-w-xl mx-auto bg-white rounded-xl shadow-card p-6">
@@ -57,36 +79,77 @@ export default async function UsersPage() {
             Peça para um administrador adicionar seu e-mail em <code>ADMIN_EMAILS</code> ou marcar <code>profiles.is_admin = true</code>.
           </p>
           <div className="mt-4">
-            <Link href="/" className="px-3 py-2 rounded-lg border hover:bg-neutral-50">Voltar ao painel</Link>
+            <Link href="/" className="px-3 py-2 rounded-lg border hover:bg-neutral-50">
+              Voltar ao painel
+            </Link>
           </div>
         </div>
       </main>
     )
   }
 
-  // Carrega via API (server → server)
-  const res = await fetch(`${process.env.NEXT_PUBLIC_SITE_URL ?? ''}/api/admin/users`, { cache: 'no-store' })
-  const data = res.ok ? await res.json() : { users: [] }
-  const users: AdminUser[] = (data?.users ?? [])
+  // Se não houver Service Role, mostra orientação e evita chamadas
+  if (!hasAdminKey()) {
+    return (
+      <main className="p-6 space-y-6">
+        <div className="flex items-center justify-between">
+          <h1 className="text-2xl font-semibold">Usuários</h1>
+          <Link href="/settings" className="px-3 py-2 rounded-lg border hover:bg-neutral-50">
+            Voltar
+          </Link>
+        </div>
+        <div className="bg-white rounded-xl shadow-card p-4">
+          <p className="text-sm text-neutral-600">
+            Para listar/convidar usuários, defina <code>SUPABASE_SERVICE_ROLE_KEY</code> nas variáveis de ambiente do projeto.
+          </p>
+        </div>
+      </main>
+    )
+  }
+
+  // Busca via API com URL absoluta (corrige o erro de Invalid URL)
+  let users: AdminUser[] = []
+  try {
+    const base = getBaseUrlFromRequest()
+    const res = await fetch(`${base}/api/admin/users`, { cache: 'no-store' })
+    if (!res.ok) {
+      const j = await res.json().catch(() => ({}))
+      console.error('[users/page] api error:', j)
+      throw new Error(j?.error ?? 'Falha ao carregar usuários')
+    }
+    const data = await res.json()
+    users = (data?.users ?? []) as AdminUser[]
+  } catch (err) {
+    console.error('[users/page] render error:', err)
+    return (
+      <main className="p-6">
+        <div className="max-w-xl mx-auto bg-white rounded-xl shadow-card p-6">
+          <h1 className="text-xl font-semibold mb-2">Usuários</h1>
+          <p className="text-sm text-rose-600">
+            Ocorreu um erro ao carregar os usuários. Veja os logs do servidor.
+          </p>
+          <div className="mt-4">
+            <Link href="/settings" className="px-3 py-2 rounded-lg border hover:bg-neutral-50">
+              Voltar
+            </Link>
+          </div>
+        </div>
+      </main>
+    )
+  }
 
   return (
     <main className="p-6 space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-semibold">Usuários</h1>
-        <Link href="/settings" className="px-3 py-2 rounded-lg border hover:bg-neutral-50">Voltar</Link>
+        <Link href="/settings" className="px-3 py-2 rounded-lg border hover:bg-neutral-50">
+          Voltar
+        </Link>
       </div>
 
-      {hasAdminKey() ? (
-        <div className="bg-white rounded-xl shadow-card p-4">
-          <InviteUserForm />
-        </div>
-      ) : (
-        <div className="bg-white rounded-xl shadow-card p-4">
-          <p className="text-sm text-neutral-600">
-            Para convidar usuários, defina <code>SUPABASE_SERVICE_ROLE_KEY</code> nas variáveis de ambiente.
-          </p>
-        </div>
-      )}
+      <div className="bg-white rounded-xl shadow-card p-4">
+        <InviteUserForm />
+      </div>
 
       <div className="bg-white rounded-xl shadow-card overflow-hidden">
         <div className="overflow-x-auto">
@@ -118,7 +181,9 @@ export default async function UsersPage() {
               ))}
               {users.length === 0 && (
                 <tr>
-                  <td colSpan={5} className="py-6 text-center text-neutral-500">Nenhum usuário encontrado.</td>
+                  <td colSpan={5} className="py-6 text-center text-neutral-500">
+                    Nenhum usuário encontrado.
+                  </td>
                 </tr>
               )}
             </tbody>
@@ -128,4 +193,3 @@ export default async function UsersPage() {
     </main>
   )
 }
-
