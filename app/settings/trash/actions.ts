@@ -1,3 +1,4 @@
+// app/settings/trash/actions.ts
 'use server'
 
 import { createClient } from '@/lib/supabase/server'
@@ -14,7 +15,10 @@ type Entity =
 
 async function requireUser() {
   const supabase = createClient()
-  const { data: { user }, error } = await supabase.auth.getUser()
+  const {
+    data: { user },
+    error,
+  } = await supabase.auth.getUser()
   if (error || !user) {
     throw new Error('Não autenticado')
   }
@@ -97,13 +101,28 @@ export async function softDeleteAction(formData: FormData) {
       }
 
       case 'cards': {
-        const { error } = await supabase
+        // Marca o cartão
+        const { data: cardRow, error: cardErr } = await supabase
           .from('cards')
           .update({ deleted_at: now })
           .eq('id', id)
           .eq('user_id', user.id)
-        if (error) throw error
+          .select('account_id')
+          .single()
+        if (cardErr) throw cardErr
+
+        // Sincroniza a account do cartão (some também do módulo Bancos)
+        if (cardRow?.account_id) {
+          const { error: accErr } = await supabase
+            .from('accounts')
+            .update({ deleted_at: now })
+            .eq('id', cardRow.account_id)
+            .eq('user_id', user.id)
+          if (accErr) throw accErr
+        }
+
         revalidatePath('/cards')
+        revalidatePath('/banking')
         revalidatePath('/settings/trash')
         return
       }
@@ -203,13 +222,28 @@ export async function restoreAction(formData: FormData) {
       }
 
       case 'cards': {
-        const { error } = await supabase
+        // Restaura cartão
+        const { data: cardRow, error: cardErr } = await supabase
           .from('cards')
           .update({ deleted_at: null })
           .eq('id', id)
           .eq('user_id', user.id)
-        if (error) throw error
+          .select('account_id')
+          .single()
+        if (cardErr) throw cardErr
+
+        // Restaura account do cartão (para reaparecer no Bancos)
+        if (cardRow?.account_id) {
+          const { error: accErr } = await supabase
+            .from('accounts')
+            .update({ deleted_at: null })
+            .eq('id', cardRow.account_id)
+            .eq('user_id', user.id)
+          if (accErr) throw accErr
+        }
+
         revalidatePath('/cards')
+        revalidatePath('/banking')
         revalidatePath('/settings/trash')
         return
       }
@@ -371,6 +405,7 @@ export async function purgeAction(formData: FormData) {
         if (error) throw error
 
         revalidatePath('/cards')
+        revalidatePath('/banking')
         revalidatePath('/settings/trash')
         return
       }
@@ -393,7 +428,9 @@ export async function purgeAction(formData: FormData) {
   } catch (err: any) {
     console.error('[trash-actions] purgeAction supabase error:', err)
     if (err?.code === '23503') {
-      throw new Error('Não foi possível excluir definitivamente: existem registros relacionados.')
+      throw new Error(
+        'Não foi possível excluir definitivamente: existem registros relacionados.'
+      )
     }
     throw new Error('Falha ao excluir definitivamente')
   }
